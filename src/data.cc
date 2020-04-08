@@ -88,6 +88,11 @@ expiration_get (expiration_t *self)
     return self->last_time_seen_sec + self->ttl_sec * 2;
 }
 
+void ename_destroy(void **ptr)
+{
+    free (*ptr);
+}
+
 //  --------------------------------------------------------------------------
 //  Destroy the data
 void
@@ -115,6 +120,8 @@ data_new (void)
             data_destroy (&self);
             return NULL;
         }
+        zhashx_set_destructor (self -> asset_enames,  (zhashx_destructor_fn *) ename_destroy);
+
         self -> assets = zhashx_new();
         if ( self->assets ) {
             self->default_expiry_sec = DEFAULT_ASSET_EXPIRATION_TIME_SEC;
@@ -225,7 +232,7 @@ data_put (data_t *self, fty_proto_t **proto_p)
             )
        )
     {
-        zhashx_insert (self->asset_enames, asset_name, (void*) fty_proto_ext_string (proto, "name", ""));
+        zhashx_update (self->asset_enames, asset_name, (void*) strdup(fty_proto_ext_string (proto, "name", "")));
 
         // this asset is not known yet -> add it to the cache
         expiration_t *e = (expiration_t *) zhashx_lookup (self->assets, asset_name );
@@ -234,7 +241,7 @@ data_put (data_t *self, fty_proto_t **proto_p)
             uint64_t now_sec = zclock_time() / 1000;
             expiration_update (e, now_sec);
             log_debug ("asset: ADDED name='%s', last_seen=%" PRIu64 "[s], ttl= %" PRIu64 "[s], expires_at=%" PRIu64 "[s]", asset_name, e->last_time_seen_sec, e->ttl_sec, expiration_get (e));
-            zhashx_insert (self->assets, asset_name, e);
+            zhashx_update (self->assets, asset_name, e);
         }
         else {
             fty_proto_destroy (proto_p);
