@@ -73,10 +73,10 @@ s_osrv_new ()
             self->timeout_ms = TIMEOUT_MS;
             self->state_file = NULL;
             self->default_maintenance_expiration = 0;
+            self->verbose = false;
         } else {
             s_osrv_destroy (&self);
         }
-        self->verbose = false;
     }
     return self;
 }
