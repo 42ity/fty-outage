@@ -97,8 +97,8 @@ s_osrv_send_alert (s_osrv_t* self, const char* source_asset, const char* alert_s
     std::string description = TRANSLATE_ME("Device %s does not provide expected data. It may be offline or not correctly configured.", data_get_asset_ename (self->assets, source_asset));
     zmsg_t *msg = fty_proto_encode_alert (
             NULL, // aux
-            zclock_time() / 1000,
-            self->timeout_ms * 3,
+            zclock_time() / 1000, // unix time (sec.)
+            self->timeout_ms * 3 / 1000, // ttl (sec.)
             rule_name, // rule_name
             source_asset,
             alert_state,
