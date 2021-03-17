@@ -781,7 +781,7 @@ fty_outage_server (zsock_t *pipe, void *args)
                         const char *operation = fty_proto_operation (bmsg);
                         // hotfix IPMVAL-2713: filter inventory message from sensors which cause the 'outage' alert activation/deactivation.
                         if (!streq (mlm_client_address (self->client), FTY_PROTO_STREAM_METRICS_SENSOR) ||
-                           ((NULL == operation) && !streq (operation, FTY_PROTO_ASSET_OP_INVENTORY))) {
+                           ((NULL == operation) || !streq (operation, FTY_PROTO_ASSET_OP_INVENTORY))) {
                             int rv = data_touch_asset (self->assets, source, timestamp, fty_proto_ttl (bmsg), now_sec);
                             if ( rv == -1 )
                                 log_error ("asset: name = %s, topic=%s metric is from future! ignore it", source, mlm_client_subject (self->client));
