@@ -97,8 +97,8 @@ s_osrv_send_alert (s_osrv_t* self, const char* source_asset, const char* alert_s
     std::string description = TRANSLATE_ME("Device %s does not provide expected data. It may be offline or not correctly configured.", data_get_asset_ename (self->assets, source_asset));
     zmsg_t *msg = fty_proto_encode_alert (
             NULL, // aux
-            zclock_time() / 1000,
-            self->timeout_ms * 3,
+            zclock_time() / 1000, // unix time (sec.)
+            self->timeout_ms * 3 / 1000, // ttl (sec.)
             rule_name, // rule_name
             source_asset,
             alert_state,
@@ -208,8 +208,11 @@ s_osrv_activate_alert (s_osrv_t* self, const char* source_asset)
         s_osrv_send_alert (self, source_asset, "ACTIVE");
         zhash_insert (self->active_alerts, source_asset, TRUE);
     }
-    else
-        log_debug ("\t\talert already active for source=%s", source_asset);
+    else {
+        /// XXX: Send the alert nevertheless, unexplained behavior change from last release.
+        log_debug ("\t\talert already active for source=%s (sending alert anyway)", source_asset);
+        s_osrv_send_alert (self, source_asset, "ACTIVE");
+    }
 }
 
 static int
@@ -436,7 +439,7 @@ s_osrv_actor_commands (s_osrv_t* self, zmsg_t **message_p)
 
 void
 metric_processing (fty::shm::shmMetrics& metrics, void* args) {
-  
+
   s_osrv_t *self = (s_osrv_t *) args;
 
   for (auto &element : metrics) {
@@ -512,7 +515,7 @@ outage_metric_polling (zsock_t *pipe, void *args)
             zmsg_destroy (&msg);
         }
       }
-      
+
   }
   zpoller_destroy(&poller);
 }
@@ -775,9 +778,14 @@ fty_outage_server (zsock_t *pipe, void *args)
                         // is it from sensor? no
                         const char *source = fty_proto_name (bmsg);
                         s_osrv_resolve_alert (self, source);
-                        int rv = data_touch_asset (self->assets, source, timestamp, fty_proto_ttl (bmsg), now_sec);
-                        if ( rv == -1 )
-                            log_error ("asset: name = %s, topic=%s metric is from future! ignore it", source, mlm_client_subject (self->client));
+                        const char *operation = fty_proto_operation (bmsg);
+                        // hotfix IPMVAL-2713: filter inventory message from sensors which cause the 'outage' alert activation/deactivation.
+                        if (!streq (mlm_client_address (self->client), FTY_PROTO_STREAM_METRICS_SENSOR) ||
+                           ((NULL == operation) || !streq (operation, FTY_PROTO_ASSET_OP_INVENTORY))) {
+                            int rv = data_touch_asset (self->assets, source, timestamp, fty_proto_ttl (bmsg), now_sec);
+                            if ( rv == -1 )
+                                log_error ("asset: name = %s, topic=%s metric is from future! ignore it", source, mlm_client_subject (self->client));
+                        }
                     }
                 }
                 else {
