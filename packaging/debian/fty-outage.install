@@ -1,4 +1,0 @@
-usr/bin/fty-outage
-etc/fty-outage/fty-outage.cfg
-lib/systemd/system/fty-outage.service
-
