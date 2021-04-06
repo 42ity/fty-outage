@@ -144,7 +144,3 @@ nbproject/
 
 # editor backups
 *~
-# CMake in general
-builds/cmake/
-CMake*
-*.cmake
