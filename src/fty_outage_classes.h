@@ -26,11 +26,8 @@
 #ifndef FTY_OUTAGE_CLASSES_H_INCLUDED
 #define FTY_OUTAGE_CLASSES_H_INCLUDED
 
-//  Platform definitions, must come first
-#include "platform.h"
-
 //  External API
-#include "../include/fty-outage.h"
+#include "fty-outage.h"
 
 //  Opaque class structures to allow forward references
 #ifndef DATA_T_DEFINED
@@ -49,11 +46,11 @@ typedef struct _data_t data_t;
 
 //  *** Draft method, defined for internal use only ***
 //  Self test of this class.
-FTY_OUTAGE_PRIVATE void
+void
     data_test (bool verbose);
 
 //  Self test for private classes
-FTY_OUTAGE_PRIVATE void
+void
     fty_outage_private_selftest (bool verbose, const char *subtest);
 
 #endif // FTY_OUTAGE_BUILD_DRAFT_API

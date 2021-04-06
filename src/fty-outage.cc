@@ -26,7 +26,7 @@
 @end
 */
 
-#include "fty_outage_classes.h"
+#include "fty-outage.h"
 
 static const char *CONFIG = "/etc/fty-outage/fty-outage.cfg";
 

@@ -22,7 +22,7 @@
 #ifndef DATA_H_INCLUDED
 #define DATA_H_INCLUDED
 
-#include "../include/fty-outage.h"
+#include "fty-outage.h"
 
 // it is used as TTL, but in formula we are waiting for ttl*2 ->
 // so if we here would have 15 minutes-> the first alert will come in 30 minutes
@@ -46,46 +46,46 @@ typedef struct _data_t data_t;
 
 //  @interface
 //  Create a new data
-FTY_OUTAGE_EXPORT data_t *
+data_t *
     data_new (void);
 
 //  Destroy the data
-FTY_OUTAGE_EXPORT void
+void
     data_destroy (data_t **self_p);
 
 // get asset unicode name
-FTY_OUTAGE_EXPORT const char*
+const char*
 data_get_asset_ename (data_t *self, const char *asset_name);
 
 //  Return default number of seconds in that newly added asset would expire
-FTY_OUTAGE_EXPORT uint64_t
+uint64_t
     data_default_expiry (data_t* self);
 
 //  Set default number of seconds in that newly added asset would expire
-FTY_OUTAGE_EXPORT void
+void
     data_set_default_expiry (data_t* self, uint64_t expiry_sec);
 
 //  calculates metric expiration time for each asset
 //  takes owneship of the message
-FTY_OUTAGE_EXPORT void
+void
     data_put (data_t *self, fty_proto_t  **proto);
 
 //  delete from cache
-FTY_OUTAGE_EXPORT void
+void
     data_delete (data_t *self, const char* source);
 
 //  Returns list of nonresponding devices, zlistx entries are refereces
-FTY_OUTAGE_EXPORT zlistx_t *
+zlistx_t *
     data_get_dead (data_t *self);
 
 //  update information about expiration time
 //  return -1, if data are from future and are ignored as damaging
 //  return 0 otherwise
-FTY_OUTAGE_EXPORT int
+int
     data_touch_asset (data_t *self, const char *asset_name, uint64_t timestamp, uint64_t ttl, uint64_t now_sec);
 
 //  Self test of this class
-FTY_OUTAGE_EXPORT void
+void
     data_test (bool verbose);
 
 //  Structure of our class
@@ -96,23 +96,23 @@ typedef struct _expiration_t {
 } expiration_t;
 
 //  Create a new expiration
-FTY_OUTAGE_EXPORT expiration_t*
+expiration_t*
 expiration_new (uint64_t default_expiry_sec, fty_proto_t **msg_p);
 
 //  Destroy the expiration
-FTY_OUTAGE_EXPORT void
+void
 expiration_destroy (expiration_t **self_p);
 
 //  Update the expiration
-FTY_OUTAGE_EXPORT void
+void
 expiration_update (expiration_t *self, uint64_t new_time_seen_sec);
 
 //  Update the expiration TTL
-FTY_OUTAGE_EXPORT void
+void
 expiration_update_ttl (expiration_t *self, uint64_t proposed_ttl);
 
 //  Get the expiration TTL
-FTY_OUTAGE_EXPORT uint64_t
+uint64_t
 expiration_get (expiration_t *self);
 
 //  @end

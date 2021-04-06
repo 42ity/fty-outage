@@ -28,7 +28,7 @@
 #define TIMEOUT_MS 30000   //wait at least 30 seconds
 #define SAVE_INTERVAL_MS 45*60*1000 // store state each 45 minutes
 
-#include "fty_outage_classes.h"
+#include "fty-outage.h"
 #include "data.h"
 #include "fty_common_macros.h"
 

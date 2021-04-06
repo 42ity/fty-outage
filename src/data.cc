@@ -26,7 +26,7 @@
 @end
 */
 
-#include "fty_outage_classes.h"
+#include "data.h"
 
 expiration_t*
 expiration_new (uint64_t default_expiry_sec, fty_proto_t **msg_p)
