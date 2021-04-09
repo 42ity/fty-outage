@@ -7,10 +7,16 @@ Agent fty-outage produces pure alerts on \_ALERTS\_SYS when no data are coming f
 To build fty-outage project run:
 
 ```bash
-./autogen.sh
-./configure
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=usr -DBUILD_TESTING=On ..
 make
-make check # to run self-test
+sudo make install
+```
+
+Optionally, to run fty-outage tests run:
+
+```bash
+make test
 ```
 
 ## How to run

@@ -1,7 +1,7 @@
 /*  =========================================================================
     fty-outage - Agent that sends alerts when device does not communicate.
 
-    Copyright (C) 2014 - 2020 Eaton
+    Copyright (C) 2014 - 2021 Eaton
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -22,8 +22,15 @@
 #ifndef FTY_OUTAGE_H_H_INCLUDED
 #define FTY_OUTAGE_H_H_INCLUDED
 
-//  Include the project library file
-#include "fty_outage_library.h"
+//  External dependencies
+#include <czmq.h>
+#include <malamute.h>
+#include <cxxtools/allocator.h>
+#include <fty_log.h>
+#include <fty_common.h>
+#include <ftyproto.h>
+#include <fty_shm.h>
+#include "fty-outage-server.h"
 
 //  Add your own public definitions here, if you need them
 // Default TTL of assets in maintenance mode
