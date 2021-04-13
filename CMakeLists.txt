@@ -31,21 +31,21 @@ etn_target(exe ${PROJECT_NAME}
 etn_configure_file(
     resources/${PROJECT_NAME}.cfg.in
     TARGET      ${PROJECT_NAME}
-    DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/${PROJECT_NAME}
+    DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/${PROJECT_NAME}"
 )
 
 # systemd unit
 etn_configure_file(
     resources/${PROJECT_NAME}.service.in
     TARGET      ${PROJECT_NAME}
-    DESTINATION /lib/systemd/system/
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/systemd/system/"
 )
 
 # systemd tmpfiles
 etn_configure_file(
     resources/${PROJECT_NAME}.conf.in
     TARGET      ${PROJECT_NAME}
-    DESTINATION /usr/lib/tmpfiles.d/
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/usr/lib/tmpfiles.d/"
 )
 
 if (BUILD_TESTING)
