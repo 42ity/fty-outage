@@ -222,13 +222,14 @@ data_put (data_t *self, fty_proto_t **proto_p)
         fty_proto_destroy (proto_p);
     }
     else
-    // other asset operations - add ups, epdu or sensors to the cache if not present
+    // other asset operations - add ups, epdu, ats or sensors to the cache if not present
+    // note: filter sts which have no measure (for that test device.type which is empty)
     if (    streq (fty_proto_aux_string (proto, FTY_PROTO_ASSET_TYPE, ""), "device" )
          && (   streq (sub_type, "ups")
              || streq (sub_type, "epdu")
              || streq (sub_type, "sensor")
              || streq (sub_type, "sensorgpio")
-             || streq (sub_type, "sts")
+             || (streq (sub_type, "sts") && !streq (fty_proto_ext_string (proto, "device.type", ""), "" ))
             )
        )
     {
