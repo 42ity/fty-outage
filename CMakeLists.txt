@@ -44,7 +44,7 @@ etn_configure_file(
 etn_configure_file(
     resources/${PROJECT_NAME}.conf.in
     TARGET      ${PROJECT_NAME}
-    DESTINATION "${CMAKE_INSTALL_PREFIX}/usr/lib/tmpfiles.d/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/tmpfiles.d/"
 )
 
 if (BUILD_TESTING)
