@@ -15,16 +15,16 @@ PartOf=bios.target
 Type=simple
 User=bios
 Restart=always
-EnvironmentFile=-@CMAKE_INSTALL_PREFIX@/share/bios/etc/default/bios
-EnvironmentFile=-@CMAKE_INSTALL_PREFIX@/share/bios/etc/default/bios__%n.conf
-EnvironmentFile=-@CMAKE_INSTALL_PREFIX@/share/fty/etc/default/fty
-EnvironmentFile=-@CMAKE_INSTALL_PREFIX@/share/fty/etc/default/fty__%n.conf
-EnvironmentFile=-@CMAKE_INSTALL_SYSCONFDIR@/default/bios
-EnvironmentFile=-@CMAKE_INSTALL_SYSCONFDIR@/default/bios__%n.conf
-EnvironmentFile=-@CMAKE_INSTALL_SYSCONFDIR@/default/fty
-EnvironmentFile=-@CMAKE_INSTALL_SYSCONFDIR@/default/fty__%n.conf
+EnvironmentFile=-@CMAKE_INSTALL_FULL_DATAROOTDIR@/bios/etc/default/bios
+EnvironmentFile=-@CMAKE_INSTALL_FULL_DATAROOTDIR@/bios/etc/default/bios__%n.conf
+EnvironmentFile=-@CMAKE_INSTALL_FULL_DATAROOTDIR@/fty/etc/default/fty
+EnvironmentFile=-@CMAKE_INSTALL_FULL_DATAROOTDIR@/fty/etc/default/fty__%n.conf
+EnvironmentFile=-@CMAKE_INSTALL_FULL_SYSCONFDIR@/default/bios
+EnvironmentFile=-@CMAKE_INSTALL_FULL_SYSCONFDIR@/default/bios__%n.conf
+EnvironmentFile=-@CMAKE_INSTALL_FULL_SYSCONFDIR@/default/fty
+EnvironmentFile=-@CMAKE_INSTALL_FULL_SYSCONFDIR@/default/fty__%n.conf
 Environment="prefix=@CMAKE_INSTALL_PREFIX@"
-ExecStart=@CMAKE_INSTALL_PREFIX@/bin/@PROJECT_NAME@ -c @CMAKE_INSTALL_SYSCONFDIR@/@PROJECT_NAME@/@PROJECT_NAME@.cfg
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/@PROJECT_NAME@ -c @CMAKE_INSTALL_FULL_SYSCONFDIR@/@PROJECT_NAME@/@PROJECT_NAME@.cfg
 
 [Install]
 WantedBy=bios.target
