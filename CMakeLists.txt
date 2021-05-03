@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 ##############################################################################################################
 
 project(fty-outage
-  VERSION "1.0.0"
+  VERSION 1.0.0
   DESCRIPTION "Agent that sends alerts when device does not communicate"
   LANGUAGES CXX)
 
