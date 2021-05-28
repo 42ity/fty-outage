@@ -25,21 +25,14 @@ Standards-Version: 4.0.1.0
 Build-Depends: debhelper (>= 9),
     cmake (>=3.0),
     fty-cmake-dev,
-    pkg-config,
     libsodium-dev,
     libzmq3-dev,
     libczmq-dev (>= 3.0.2),
     libmlm-dev (>= 1.0.0),
-    libcxxtools-dev,
     libfty-common-logging-dev,
     libfty-common-dev,
     libfty-proto-dev (>= 1.0.0),
-    libfty-shm-dev (>= 1.0.0),
-    gcc (>= 4.9.0), g++ (>= 4.9.0),
-    systemd,
-    dh-systemd,
-    asciidoc-base | asciidoc, xmlto,
-    dh-autoreconf
+    libfty-shm-dev (>= 1.0.0)
 
 Package: fty-outage
 Architecture: any

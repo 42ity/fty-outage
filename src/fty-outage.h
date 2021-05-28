@@ -19,24 +19,13 @@
     =========================================================================
 */
 
-#ifndef FTY_OUTAGE_H_H_INCLUDED
-#define FTY_OUTAGE_H_H_INCLUDED
+#pragma once
 
-//  External dependencies
-#include <czmq.h>
-#include <malamute.h>
-#include <cxxtools/allocator.h>
-#include <fty_log.h>
-#include <fty_common.h>
-#include <ftyproto.h>
-#include <fty_shm.h>
 #include "fty-outage-server.h"
 
 //  Add your own public definitions here, if you need them
 // Default TTL of assets in maintenance mode
-#define DEFAULT_MAINTENANCE_EXPIRATION  "3600"
+#define DEFAULT_MAINTENANCE_EXPIRATION "3600"
 
 #define DISABLE_MAINTENANCE 0
 #define ENABLE_MAINTENANCE  1
-
-#endif

@@ -19,14 +19,10 @@
     =========================================================================
 */
 
-/*
-@header
-    fty_agent_outage - Agent outage
-@discuss
-@end
-*/
 
 #include "fty-outage.h"
+#include <fty_log.h>
+#include <fty_proto.h>
 
 static const char *CONFIG = "/etc/fty-outage/fty-outage.cfg";
 
@@ -87,7 +83,7 @@ int main (int argc, char *argv [])
     }
 
     // FIXME: use agent name from fty-common
-    zactor_t *server = zactor_new (fty_outage_server, (void *) "outage");
+    zactor_t *server = zactor_new (fty_outage_server, const_cast<char*>("outage"));
     //  Insert main code here
 
     zstr_sendx (server, "STATE-FILE", "/var/lib/fty/fty-outage/state.zpl", NULL);

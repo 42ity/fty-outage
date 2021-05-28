@@ -19,26 +19,8 @@
     =========================================================================
 */
 
-#ifndef FTY_OUTAGE_SERVER_H_INCLUDED
-#define FTY_OUTAGE_SERVER_H_INCLUDED
+#pragma once
+#include <czmq.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-//  @interface
 //  fty_outage_server actor
-void
-    fty_outage_server (zsock_t *pipe, void *args);
-
-//  Self test of this class
-void
-    fty_outage_server_test (bool verbose);
-
-//  @end
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+void fty_outage_server(zsock_t* pipe, void* args);
