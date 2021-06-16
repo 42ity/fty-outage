@@ -549,7 +549,7 @@ void fty_outage_server(zsock_t* pipe, void* /*args*/)
             if (!message)
                 break;
 
-            if (!is_fty_proto(message)) {
+            if (!fty_proto_is(message)) {
                 if (streq(mlm_client_address(self->client), FTY_PROTO_STREAM_METRICS_UNAVAILABLE)) {
                     char* foo = zmsg_popstr(message);
                     if (foo && streq(foo, "METRICUNAVAILABLE")) {
