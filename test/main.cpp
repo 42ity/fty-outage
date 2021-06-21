@@ -15,12 +15,3 @@
 */
 #define CATCH_CONFIG_MAIN // This tells Catch to provide a main() - only do this in one cpp file
 #include <catch2/catch.hpp>
-
-#include "../fty_outage_classes.h"
-#include <filesystem>
-
-TEST_CASE("All the stuff of before")
-{
-    std::cout << "Current path is " << std::filesystem::current_path() << std::endl;
-    fty_outage_private_selftest(true, "$ALL");
-}
