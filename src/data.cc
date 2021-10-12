@@ -267,7 +267,7 @@ zlistx_t* data_get_dead(data_t* self)
     for (expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_first(self->assets)); e != NULL;
          e               = reinterpret_cast<expiration_t*>(zhashx_next(self->assets))) {
         void* asset_name = const_cast<void*>(zhashx_cursor(self->assets));
-        logDebug("asset: name={}, ttl={}, expires_at={}", static_cast<std::string*>(asset_name), e->ttl_sec,
+        logDebug("asset: name={}, ttl={}, expires_at={}", static_cast<char*>(asset_name), e->ttl_sec,
             expiration_get(e));
         if (expiration_get(e) <= now_sec) {
             assert(zlistx_add_start(dead, asset_name));
