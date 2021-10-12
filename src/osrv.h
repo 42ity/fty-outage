@@ -59,7 +59,7 @@ inline int s_osrv_save(s_osrv_t* self)
     assert(self);
 
     if (!self->state_file) {
-        log_warning("There is no state path set-up, can't store the state");
+        logDebug("There is no state path set-up, can't store the state");
         return -1;
     }
 
@@ -78,7 +78,7 @@ inline int s_osrv_save(s_osrv_t* self)
     }
 
     int ret = zconfig_save(root, self->state_file);
-    log_debug("outage_actor: save state to %s", self->state_file);
+    logDebug("outage_actor: save state to {}", self->state_file);
     zconfig_destroy(&root);
     return ret;
 }
@@ -88,19 +88,19 @@ inline int s_osrv_load(s_osrv_t* self)
     assert(self);
 
     if (!self->state_file) {
-        log_warning("There is no state path set-up, can't load the state");
+        logDebug("There is no state path set-up, can't load the state");
         return -1;
     }
 
     zconfig_t* root = zconfig_load(self->state_file);
     if (!root) {
-        log_error("Can't load configuration from %s: %m", self->state_file);
+        logError("Can't load configuration from {}: %m", self->state_file);
         return -1;
     }
 
     zconfig_t* active_alerts = zconfig_locate(root, "alerts");
     if (!active_alerts) {
-        log_error("Can't find 'alerts' in %s", self->state_file);
+        logError("Can't find 'alerts' in {}", self->state_file);
         zconfig_destroy(&root);
         return -1;
     }

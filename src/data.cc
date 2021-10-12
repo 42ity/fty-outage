@@ -163,9 +163,8 @@ int data_touch_asset(data_t* self, const char* asset_name, uint64_t timestamp, u
         return -1;
     else {
         expiration_update(e, timestamp);
-        log_debug("asset: INFO UPDATED name='%s', last_seen=%" PRIu64 "[s], ttl= %" PRIu64 "[s], expires_at=%" PRIu64
-                  "[s]",
-            asset_name, e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
+        logDebug("asset: INFO UPDATED name='{}', last_seen={}[s], ttl={}[s], expires_at={}[s]", asset_name,
+            e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
     }
     return 0;
 }
@@ -189,7 +188,7 @@ void data_put(data_t* self, fty_proto_t** proto_p)
     const char* operation  = fty_proto_operation(proto);
     const char* asset_name = fty_proto_name(proto);
 
-    log_debug("Received asset: name=%s, operation=%s", asset_name, operation);
+    logDebug("Received asset: name={}, operation={}", asset_name, operation);
 
     // remove asset from cache
     const char* sub_type = fty_proto_aux_string(proto, FTY_PROTO_ASSET_SUBTYPE, "");
@@ -197,7 +196,7 @@ void data_put(data_t* self, fty_proto_t** proto_p)
         streq(fty_proto_aux_string(proto, FTY_PROTO_ASSET_STATUS, ""), "retired") ||
         streq(fty_proto_aux_string(proto, FTY_PROTO_ASSET_STATUS, ""), "nonactive")) {
         data_delete(self, asset_name);
-        log_debug("asset: DELETED name=%s, operation=%s", asset_name, operation);
+        logDebug("asset: DELETED name={}, operation={}", asset_name, operation);
         fty_proto_destroy(proto_p);
     } else
         // other asset operations - add ups, epdu, ats or sensors to the cache if not present
@@ -216,9 +215,8 @@ void data_put(data_t* self, fty_proto_t** proto_p)
 
             uint64_t now_sec = uint64_t(zclock_time() / 1000);
             expiration_update(e, now_sec);
-            log_debug("asset: ADDED name='%s', last_seen=%" PRIu64 "[s], ttl= %" PRIu64 "[s], expires_at=%" PRIu64
-                      "[s]",
-                asset_name, e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
+            logDebug("asset: ADDED name='{}', last_seen={}[s], ttl={}[s], expires_at={}[s]", asset_name,
+                e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
             zhashx_update(self->assets, asset_name, e);
         } else {
             fty_proto_destroy(proto_p);
@@ -265,11 +263,12 @@ zlistx_t* data_get_dead(data_t* self)
     zlistx_t* dead = zlistx_new();
 
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
-    log_debug("now=%" PRIu64 "s", now_sec);
+    logDebug("now={}s", now_sec);
     for (expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_first(self->assets)); e != NULL;
          e               = reinterpret_cast<expiration_t*>(zhashx_next(self->assets))) {
         void* asset_name = const_cast<void*>(zhashx_cursor(self->assets));
-        log_debug("asset: name=%s, ttl=%" PRIu64 ", expires_at=%" PRIu64, asset_name, e->ttl_sec, expiration_get(e));
+        logDebug("asset: name={}, ttl={}, expires_at={}", static_cast<std::string*>(asset_name), e->ttl_sec,
+            expiration_get(e));
         if (expiration_get(e) <= now_sec) {
             assert(zlistx_add_start(dead, asset_name));
         }
