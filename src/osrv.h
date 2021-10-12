@@ -94,7 +94,7 @@ inline int s_osrv_load(s_osrv_t* self)
 
     zconfig_t* root = zconfig_load(self->state_file);
     if (!root) {
-        logError("Can't load configuration from {}: %m", self->state_file);
+        logError("Can't load configuration from {}", self->state_file);
         return -1;
     }
 
