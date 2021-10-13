@@ -37,8 +37,9 @@ int main(int argc, char* argv[])
     // Parse command line
     for (argn = 1; argn < argc; argn++) {
         char* param = NULL;
-        if (argn < argc - 1)
+        if (argn < argc - 1){
             param = argv[argn + 1];
+        }
 
         if (streq(argv[argn], "--help") || streq(argv[argn], "-h")) {
             puts("fty-outage [options] ...");
