@@ -629,8 +629,9 @@ void fty_outage_server(zsock_t* pipe, void* /*args*/)
     zactor_destroy(&metric_poll);
     zpoller_destroy(&poller);
     int r = s_osrv_save(self);
-    if (r != 0)
-        logError("outage_actor: failed to save state file {}: %m", self->state_file);
+    if (r != 0){
+        logError("outage_actor: failed to save state file {}", self->state_file == nullptr ? "null" : self->state_file);
+    }
     s_osrv_destroy(&self);
     logInfo("outage_actor: Ended");
 }
