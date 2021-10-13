@@ -185,7 +185,7 @@ static int s_osrv_actor_commands(s_osrv_t* self, zmsg_t** message_p)
     char* command = zmsg_popstr(message);
     if (!command) {
         zmsg_destroy(message_p);
-        logDebug("Empty command.");
+        logWarn("Empty command.");
         return 0;
     }
     logDebug("Command : {}", command);
@@ -366,12 +366,12 @@ static void fty_outage_handle_mailbox(s_osrv_t* self, zmsg_t** msg)
     if (msg && *msg) {
         char* message_type = zmsg_popstr(*msg);
         if (!message_type) {
-            logDebug("Expected message of type REQUEST");
+            logWarn("Expected message of type REQUEST");
             return;
         }
         char* zuuid = zmsg_popstr(*msg);
         if (!zuuid) {
-            logDebug("Expected zuuid");
+            logWarn("Expected zuuid");
             zstr_free(&message_type);
             return;
         }
@@ -386,7 +386,7 @@ static void fty_outage_handle_mailbox(s_osrv_t* self, zmsg_t** msg)
 
         if (streq(message_type, "REQUEST")) {
             if (!command) {
-                logDebug("Expected command");
+                logWarn("Expected command");
                 zstr_free(&zuuid);
                 zstr_free(&message_type);
                 zmsg_addstr(reply, "ERROR");
@@ -454,13 +454,13 @@ static void fty_outage_handle_mailbox(s_osrv_t* self, zmsg_t** msg)
 
             } else {
                 // command is not expected
-                logDebug("'{}': invalid command", command);
+                logWarn("'{}': invalid command", command);
                 zmsg_addstr(reply, "ERROR");
                 zmsg_addstr(reply, "Invalid command");
             }
         } else {
             // message_type is not expected
-            logDebug("'{}': invalid message type", message_type);
+            logWarn("'{}': invalid message type", message_type);
             zmsg_addstr(reply, "ERROR");
             zmsg_addstr(reply, "Invalid message type");
         }

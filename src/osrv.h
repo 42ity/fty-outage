@@ -59,7 +59,7 @@ inline int s_osrv_save(s_osrv_t* self)
     assert(self);
 
     if (!self->state_file) {
-        logDebug("There is no state path set-up, can't store the state");
+        logWarn("There is no state path set-up, can't store the state");
         return -1;
     }
 
@@ -88,13 +88,13 @@ inline int s_osrv_load(s_osrv_t* self)
     assert(self);
 
     if (!self->state_file) {
-        logDebug("There is no state path set-up, can't load the state");
+        logWarn("There is no state path set-up, can't load the state");
         return -1;
     }
 
     zconfig_t* root = zconfig_load(self->state_file);
     if (!root) {
-        logError("Can't load configuration from {}", self->state_file);
+        logError("Can't load configuration from {}: %m", self->state_file);
         return -1;
     }
 
