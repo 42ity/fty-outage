@@ -61,24 +61,31 @@ void expiration_update(expiration_t* self, uint64_t new_time_seen_sec)
 
 void expiration_update_ttl(expiration_t* self, uint64_t proposed_ttl)
 {
+    logInfo("IN UPDATE TTL BEFORE: {}  =========>", self->ttl_sec);
+
     assert(self);
     // ATTENTION: if minimum ttl for some asset is greater than DEFAULT_ASSET_EXPIRATION_TIME_SEC
     // it will be sending alerts every DEFAULT_ASSET_EXPIRATION_TIME_SEC
 
     // logic: we are looking for the minimum ttl
     if (self->ttl_sec > proposed_ttl) {
+        logInfo("proposed: {} is goood =========>", proposed_ttl);
         self->ttl_sec = proposed_ttl;
     }
+    logInfo("IN UPDATE TTL AFTER: {}  =========>", self->ttl_sec);
 }
 
 uint64_t expiration_get(expiration_t* self)
 {
+    logInfo("get expiration {} =========>", (self->last_time_seen_sec + (self->ttl_sec * 2)));
+
     assert(self);
     return self->last_time_seen_sec + self->ttl_sec * 2;
 }
 
 void ename_destroy(void** ptr)
 {
+    logInfo("ename destroy ===========>");
     free(*ptr);
 }
 
@@ -86,6 +93,8 @@ void ename_destroy(void** ptr)
 //  Destroy the data
 void data_destroy(data_t** self_p)
 {
+    logInfo("data destroy ===========>");
+
     assert(self_p);
     if (*self_p) {
         data_t* self = *self_p;
@@ -100,10 +109,16 @@ void data_destroy(data_t** self_p)
 //  Create a new data
 data_t* data_new(void)
 {
+    logInfo("data new ===========>");
+
     data_t* self = reinterpret_cast<data_t*>(zmalloc(sizeof(data_t)));
     if (self) {
+        logInfo("in if data new ===========>");
+
         self->asset_enames = zhashx_new();
         if (!self->asset_enames) {
+            logInfo("destroy = return null ===========>");
+
             data_destroy(&self);
             return NULL;
         }
@@ -111,6 +126,8 @@ data_t* data_new(void)
 
         self->assets = zhashx_new();
         if (self->assets) {
+            logInfo("self assets krch===========>");
+
             self->default_expiry_sec = DEFAULT_ASSET_EXPIRATION_TIME_SEC;
             zhashx_set_destructor(self->assets, reinterpret_cast<zhashx_destructor_fn*>(expiration_destroy));
         } else
@@ -128,6 +145,8 @@ const char* data_get_asset_ename(data_t* self, const char* asset_name)
 //  Return default number of seconds in that newly added asset would expire
 uint64_t data_default_expiry(data_t* self)
 {
+    logInfo("default expirity {} ===========>", self->default_expiry_sec);
+
     assert(self);
     return self->default_expiry_sec;
 }
@@ -146,11 +165,15 @@ void data_set_default_expiry(data_t* self, uint64_t expiry_sec)
 //  return 0 otherwise
 int data_touch_asset(data_t* self, const char* asset_name, uint64_t timestamp, uint64_t ttl, uint64_t now_sec)
 {
+    logInfo("touch asset ===========>");
+
     assert(self);
     assert(asset_name);
 
     expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(self->assets, asset_name));
     if (e == NULL) {
+        logInfo("return 0 e == null ===========>");
+
         // asset is not known -> we are not interested in this asset -> do nothing
         return 0;
     }
@@ -162,9 +185,13 @@ int data_touch_asset(data_t* self, const char* asset_name, uint64_t timestamp, u
     if (timestamp > now_sec)
         return -1;
     else {
+        logInfo("before timestamp({}) <= now_sec({}) ===========>", timestamp, now_sec);
+
         expiration_update(e, timestamp);
         logDebug("asset: INFO UPDATED name='{}', last_seen={}[s], ttl={}[s], expires_at={}[s]", asset_name,
             e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
+
+        logInfo("after timestamp({}) <= now_sec({}) ===========>", timestamp, now_sec);
     }
     return 0;
 }
@@ -219,6 +246,8 @@ void data_put(data_t* self, fty_proto_t** proto_p)
                 e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
             zhashx_update(self->assets, asset_name, e);
         } else {
+            logInfo("before destroy proto ===========>");
+
             fty_proto_destroy(proto_p);
             // intentionally left empty
             // So, if we already knew this asset -> nothing to do
@@ -234,6 +263,7 @@ void data_delete(data_t* self, const char* source)
 {
     assert(self);
     assert(source);
+    logInfo("data delete ===========>");
 
     zhashx_delete(self->assets, source);
 }
@@ -242,6 +272,8 @@ void data_delete(data_t* self, const char* source)
 // RC3 ports are labeled by 9, 10, ... but internaly we use TH1, TH2, ...
 char* convert_port(const char* old_port)
 {
+    logInfo("convert port {} ===========>", old_port);
+
     if (streq(old_port, "9"))
         return const_cast<char*>("TH1");
     else if (streq(old_port, "10"))
@@ -267,10 +299,12 @@ zlistx_t* data_get_dead(data_t* self)
     for (expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_first(self->assets)); e != NULL;
          e               = reinterpret_cast<expiration_t*>(zhashx_next(self->assets))) {
         void* asset_name = const_cast<void*>(zhashx_cursor(self->assets));
-        logDebug("asset: name={}, ttl={}, expires_at={}", static_cast<char*>(asset_name), e->ttl_sec,
-            expiration_get(e));
+        logDebug(
+            "asset: name={}, ttl={}, expires_at={}", static_cast<char*>(asset_name), e->ttl_sec, expiration_get(e));
         if (expiration_get(e) <= now_sec) {
+            logInfo("In less expiration. MUST BE ALARM SENT {} ==========>", expiration_get(e));
             assert(zlistx_add_start(dead, asset_name));
+            logInfo("DEAD IN LOOP {} ==========>", zlistx_size(dead));
         }
     }
 
