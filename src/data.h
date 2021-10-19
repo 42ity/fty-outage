@@ -23,6 +23,7 @@
 
 #include "fty-outage.h"
 #include <fty_proto.h>
+#include <czmq.h>
 #include <vector>
 #include <string>
 
