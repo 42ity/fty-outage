@@ -23,6 +23,8 @@
 
 #include "fty-outage.h"
 #include <fty_proto.h>
+#include <vector>
+#include <string>
 
 /// it is used as TTL, but in formula we are waiting for ttl*2 ->
 /// so if we here would have 15 minutes-> the first alert will come in 30 minutes
@@ -60,7 +62,7 @@ void data_put(data_t* self, fty_proto_t** proto);
 void data_delete(data_t* self, const char* source);
 
 ///  Returns list of nonresponding devices, zlistx entries are refereces
-zlistx_t* data_get_dead(data_t* self);
+std::vector<std::string> data_get_dead(data_t* self);
 
 ///  update information about expiration time
 ///  return -1, if data are from future and are ignored as damaging

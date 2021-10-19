@@ -173,18 +173,19 @@ static void s_osrv_check_dead_devices(s_osrv_t* self)
     assert(self);
 
     logDebug("time to check dead devices");
-    zlistx_t* dead_devices = data_get_dead(self->assets);
-    if (!dead_devices) {
+    auto dead_devices = data_get_dead(self->assets);
+    /* if (!dead_devices.empty()) {
         logError("Can't get a list of dead devices (memory error)");
         return;
-    }
-    logDebug("dead_devices.size={}", zlistx_size(dead_devices));
-    for (void* it = zlistx_first(dead_devices); it != NULL; it = zlistx_next(dead_devices)) {
-        const char* source = reinterpret_cast<const char*>(it);
+    } */
+    logDebug("dead_devices.size={}", dead_devices.size());
+    // for (void* it = zlistx_first(dead_devices); it != NULL; it = zlistx_next(dead_devices)) {
+    for (const auto& source : dead_devices) {
+        // const char* source = reinterpret_cast<const char*>(it);
         logDebug("\tsource={}", source);
-        s_osrv_activate_alert(self, source);
+        s_osrv_activate_alert(self, source.c_str());
     }
-    zlistx_destroy(&dead_devices);
+    // zlistx_destroy(&dead_devices);
 }
 
 static int s_osrv_actor_commands(s_osrv_t* self, zmsg_t** message_p)

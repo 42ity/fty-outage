@@ -99,10 +99,10 @@ TEST_CASE("data test")
 
     zclock_sleep(5000);
     // give me dead devices
-    zlistx_t* list = data_get_dead(data);
-    REQUIRE(zlistx_size(list) == 2);
+    auto list = data_get_dead(data);
+    REQUIRE(list.size() == 2);
 
-    zlistx_destroy(&list);
+    // zlistx_destroy(&list);
 
     // update metric - exp OK
     now_sec = uint64_t(zclock_time() / 1000);
@@ -111,7 +111,7 @@ TEST_CASE("data test")
 
     // give me dead devices
     list = data_get_dead(data);
-    REQUIRE(zlistx_size(list) == 1);
+    REQUIRE(list.size() == 1);
 
     // test asset message
     zhash_destroy(&aux);
@@ -133,7 +133,7 @@ TEST_CASE("data test")
 
     CHECK(streq(data_get_asset_ename(data, "PDU1"), "ename_of_pdu1"));
 
-    zlistx_destroy(&list);
+    // zlistx_destroy(&list);
     fty_proto_destroy(&proto_n);
     zhash_destroy(&aux);
     zhash_destroy(&ext);
