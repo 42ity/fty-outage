@@ -161,18 +161,13 @@ static void s_osrv_check_dead_devices(s_osrv_t* self)
     assert(self);
 
     logDebug("time to check dead devices");
-    zlistx_t* dead_devices = data_get_dead(self->assets);
-    if (!dead_devices) {
-        logError("Can't get a list of dead devices (memory error)");
-        return;
-    }
-    logDebug("dead_devices.size={}", zlistx_size(dead_devices));
-    for (void* it = zlistx_first(dead_devices); it != NULL; it = zlistx_next(dead_devices)) {
-        const char* source = reinterpret_cast<const char*>(it);
+    auto dead_devices = data_get_dead(self->assets);
+
+    logDebug("dead_devices.size={}", dead_devices.size());
+    for (const auto& source : dead_devices) {
         logDebug("\tsource={}", source);
-        s_osrv_activate_alert(self, source);
+        s_osrv_activate_alert(self, source.c_str());
     }
-    zlistx_destroy(&dead_devices);
 }
 
 static int s_osrv_actor_commands(s_osrv_t* self, zmsg_t** message_p)
@@ -629,7 +624,7 @@ void fty_outage_server(zsock_t* pipe, void* /*args*/)
     zactor_destroy(&metric_poll);
     zpoller_destroy(&poller);
     int r = s_osrv_save(self);
-    if (r != 0){
+    if (r != 0) {
         logError("outage_actor: failed to save state file {}", self->state_file == nullptr ? "null" : self->state_file);
     }
     s_osrv_destroy(&self);
