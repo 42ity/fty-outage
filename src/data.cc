@@ -256,21 +256,23 @@ char* convert_port(const char* old_port)
 
 // --------------------------------------------------------------------------
 // get non-responding devices
-zlistx_t* data_get_dead(data_t* self)
+std::vector<std::string> data_get_dead(data_t* self)
 {
     assert(self);
-    // list of devices
-    zlistx_t* dead = zlistx_new();
+
+    std::vector<std::string> dead;
 
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
     logDebug("now={}s", now_sec);
-    for (expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_first(self->assets)); e != NULL;
-         e               = reinterpret_cast<expiration_t*>(zhashx_next(self->assets))) {
-        void* asset_name = const_cast<void*>(zhashx_cursor(self->assets));
-        logDebug("asset: name={}, ttl={}, expires_at={}", static_cast<char*>(asset_name), e->ttl_sec,
-            expiration_get(e));
+    for (auto it = zhashx_first(self->assets); it != nullptr; it = zhashx_next(self->assets)) {
+        auto e = static_cast<expiration_t*>(it);
+
+        std::string asset_name = static_cast<const char*>(zhashx_cursor(self->assets));
+
+        logDebug("asset: name={}, ttl={}, expires_at={}", asset_name, e->ttl_sec, expiration_get(e));
+
         if (expiration_get(e) <= now_sec) {
-            assert(zlistx_add_start(dead, asset_name));
+            dead.emplace_back(asset_name);
         }
     }
 
