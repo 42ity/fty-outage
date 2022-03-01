@@ -51,13 +51,16 @@ static void s_osrv_send_alert(s_osrv_t* self, const char* source_asset, const ch
         rule_name,                             // rule_name
         source_asset, alert_state, "CRITICAL", description.c_str(), actions);
     char*   subject = zsys_sprintf("%s/%s@%s", "outage", "CRITICAL", source_asset);
+
     logDebug("Alert '{}' is '{}'", subject, alert_state);
     int rv = mlm_client_send(self->client, subject, &msg);
     if (rv != 0)
         logError("Cannot send alert on '{}' (mlm_client_send)", source_asset);
+
     zlist_destroy(&actions);
     zstr_free(&subject);
     zstr_free(&rule_name);
+    zmsg_destroy(&msg);
 }
 
 // if for asset 'source-asset' the 'outage' alert is tracked
@@ -123,12 +126,17 @@ static int s_osrv_maintenance_mode(s_osrv_t* self, const char* source_asset, int
 
             e = expiration_new(
                 (mode == ENABLE_MAINTENANCE) ? uint64_t(expiration_ttl) : self->assets->default_expiry_sec, &msg);
-
-            expiration_update(e, now_sec);
-            logDebug("asset: ADDED name='{}', last_seen={}[s], ttl={}[s], expires_at={}[s]", source_asset,
-                e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
-            zhashx_insert(self->assets->assets, source_asset, e);
-            rv = 0;
+            if (!e) {
+                log_error("expiration_new failed");
+                fty_proto_destroy(&msg);
+            }
+            else {
+                expiration_update(e, now_sec);
+                logDebug("asset: ADDED name='{}', last_seen={}[s], ttl={}[s], expires_at={}[s]", source_asset,
+                    e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
+                zhashx_insert(self->assets->assets, source_asset, e);
+                rv = 0; // ok
+            }
         }
     }
     logInfo("outage: maintenance mode {}abled for asset '{}' with TTL {}", (mode == ENABLE_MAINTENANCE) ? "en" : "dis",

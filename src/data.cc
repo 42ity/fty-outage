@@ -79,7 +79,10 @@ uint64_t expiration_get(expiration_t* self)
 
 void ename_destroy(void** ptr)
 {
-    free(*ptr);
+    if (ptr && (*ptr)) {
+        free(*ptr);
+        *ptr = NULL;
+    }
 }
 
 //  --------------------------------------------------------------------------
@@ -113,8 +116,9 @@ data_t* data_new(void)
         if (self->assets) {
             self->default_expiry_sec = DEFAULT_ASSET_EXPIRATION_TIME_SEC;
             zhashx_set_destructor(self->assets, reinterpret_cast<zhashx_destructor_fn*>(expiration_destroy));
-        } else
+        } else {
             data_destroy(&self);
+        }
     }
     return self;
 }
@@ -212,12 +216,18 @@ void data_put(data_t* self, fty_proto_t** proto_p)
         expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(self->assets, asset_name));
         if (e == NULL) {
             e = expiration_new(self->default_expiry_sec, proto_p);
-
-            uint64_t now_sec = uint64_t(zclock_time() / 1000);
-            expiration_update(e, now_sec);
-            logDebug("asset: ADDED name='{}', last_seen={}[s], ttl={}[s], expires_at={}[s]", asset_name,
-                e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
-            zhashx_update(self->assets, asset_name, e);
+            if (!e) {
+                log_error("expiration_new failed");
+                fty_proto_destroy(proto_p);
+            }
+            else {
+                // hete *proto_p is NULL, proto is owned by e)
+                uint64_t now_sec = uint64_t(zclock_time() / 1000);
+                expiration_update(e, now_sec);
+                logDebug("asset: ADDED name='{}', last_seen={}[s], ttl={}[s], expires_at={}[s]", asset_name,
+                    e->last_time_seen_sec, e->ttl_sec, expiration_get(e));
+                zhashx_update(self->assets, asset_name, e);
+            }
         } else {
             fty_proto_destroy(proto_p);
             // intentionally left empty
