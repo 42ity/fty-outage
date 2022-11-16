@@ -21,77 +21,86 @@
 
 #pragma once
 
-#include "fty-outage.h"
 #include <czmq.h>
 #include <fty_proto.h>
 #include <string>
 #include <vector>
 
-/// it is used as TTL, but in formula we are waiting for ttl*2 ->
-/// so if we here would have 15 minutes-> the first alert will come in 30 minutes
-#define DEFAULT_ASSET_EXPIRATION_TIME_SEC 15 * 60 / 2
+////////////////////////////////////////////////////////////////////////////////
+///
+/// data_t
+///
+////////////////////////////////////////////////////////////////////////////////
 
-///  Structure of our class
-struct _data_t
+///  Structure of data
+struct data_t
 {
-    zhashx_t* assets;             //!< asset_name => expiration time [s]
-    zhashx_t* asset_enames;       //!< asset iname => asset ename (unicode name)
+    zhashx_t* asset_expir;        //!< <asset_name, expiration_t*>
+    zhashx_t* asset_enames;       //!< <asset_name => asset_friendlyName> (unicode name)
     uint64_t  default_expiry_sec; //!< default time for the asset, in what asset would be considered as not responding
 };
 
-typedef struct _data_t data_t;
-
 ///  Create a new data
-data_t* data_new(void);
+data_t* data_new();
 
 ///  Destroy the data
 void data_destroy(data_t** self_p);
 
-/// get asset unicode name
+/// Get asset friendlyName (ext. name)
 const char* data_get_asset_ename(data_t* self, const char* asset_name);
 
-///  Return default number of seconds in that newly added asset would expire
+///  Return default expiry time (sec)
 uint64_t data_default_expiry(data_t* self);
 
-///  Set default number of seconds in that newly added asset would expire
+///  Set default expiry time (sec)
 void data_set_default_expiry(data_t* self, uint64_t expiry_sec);
 
-///  calculates metric expiration time for each asset  takes owneship of the message
+///  Handle deletion/update for a proto asset
+///  takes ownership on proto
 void data_put(data_t* self, fty_proto_t** proto);
 
-///  delete from cache
+///  Delete source from cache
 void data_delete(data_t* self, const char* source);
 
 ///  Returns list of nonresponding devices, zlistx entries are refereces
-std::vector<std::string> data_get_dead(data_t* self);
+std::vector<std::string> data_get_dead_devices(data_t* self);
 
 ///  update information about expiration time
 ///  return -1, if data are from future and are ignored as damaging
 ///  return 0 otherwise
 int data_touch_asset(data_t* self, const char* asset_name, uint64_t timestamp, uint64_t ttl, uint64_t now_sec);
 
-///  Self test of this class
-void data_test(bool verbose);
+/// set/unset asset maintenance mode (choose time=0 to unset)
+/// returns 0 if success, else <0
+int data_maintenance_asset(data_t* self, const char* asset_name, uint64_t time_sec);
 
-///  Structure of our class
-typedef struct _expiration_t
-{
-    uint64_t     ttl_sec;            //!< minimal ttl seen for some asset
-    uint64_t     last_time_seen_sec; //!< time when  some metrics were seen for this asset
-    fty_proto_t* msg;                //!< asset representation
-} expiration_t;
+////////////////////////////////////////////////////////////////////////////////
+///
+/// expiration_t
+///
+////////////////////////////////////////////////////////////////////////////////
+
+/// opacified structure
+typedef struct _expiration_t expiration_t;
 
 ///  Create a new expiration
-expiration_t* expiration_new(uint64_t default_expiry_sec, fty_proto_t** msg_p);
+expiration_t* expiration_new(uint64_t default_expiry_sec);
 
 ///  Destroy the expiration
 void expiration_destroy(expiration_t** self_p);
 
-///  Update the expiration
-void expiration_update(expiration_t* self, uint64_t new_time_seen_sec);
+///  Update the last time seen
+void expiration_update_last_time_seen(expiration_t* self, uint64_t new_time_seen_sec);
+uint64_t expiration_last_time_seen(expiration_t* self);
 
-///  Update the expiration TTL
-void expiration_update_ttl(expiration_t* self, uint64_t proposed_ttl);
+///  Update the ttl
+void expiration_update_ttl(expiration_t* self, uint64_t ttl_sec);
+uint64_t expiration_ttl(expiration_t* self);
 
-///  Get the expiration TTL
-uint64_t expiration_get(expiration_t* self);
+///  Get the expiration time (device death), in seconds
+uint64_t expiration_time(expiration_t* self);
+
+///  Handle maintenance timeout (0 if no maintenance)
+void expiration_maintenance_set(expiration_t* self, uint64_t time_sec);
+uint64_t expiration_maintenance(expiration_t* self);
+
