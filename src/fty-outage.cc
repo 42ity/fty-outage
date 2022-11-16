@@ -19,92 +19,94 @@
     =========================================================================
 */
 
+#include "fty-outage-server.h"
 
-#include "fty-outage.h"
+#include <fty_common_agents.h>
+#include <fty_common_mlm_utils.h>
 #include <fty_log.h>
 #include <fty_proto.h>
 
-static const char* CONFIG = "/etc/fty-outage/fty-outage.cfg";
+static void usage()
+{
+    printf("%s [options] ...\n", AGENT_FTY_OUTAGE);
+    printf("  -v/--verbose        verbose test output\n");
+    printf("  -h/--help           this information\n");
+    printf("  -c/--config <path>  path to config file\n");
+}
 
 int main(int argc, char* argv[])
 {
-    const char* logConfigFile          = "";
-    const char* maintenance_expiration = "";
-    const char* config_file            = CONFIG;
-    ftylog_setInstance("fty-outage", "");
+    const char* config_file = "/etc/fty-outage/fty-outage.cfg";
+    const char* state_file = "/var/lib/fty/fty-outage/state.zpl";
+    const char* maintenance_expiration = DEFAULT_MAINTENANCE_EXPIRATION;
     bool verbose = false;
-    int  argn;
+
     // Parse command line
-    for (argn = 1; argn < argc; argn++) {
-        char* param = NULL;
-        if (argn < argc - 1){
-            param = argv[argn + 1];
-        }
+    for (int argn = 1; argn < argc; argn++) {
+        char* param = (argn < argc - 1) ? argv[argn + 1] : NULL;
 
         if (streq(argv[argn], "--help") || streq(argv[argn], "-h")) {
-            puts("fty-outage [options] ...");
-            puts("  --verbose / -v         verbose test output");
-            puts("  --help / -h            this information");
-            puts("  -c|--config            path to config file");
-            return 0;
-        } else if (streq(argv[argn], "--verbose") || streq(argv[argn], "-v")) {
-            verbose = true;
-        } else if (streq(argv[argn], "--config") || streq(argv[argn], "-c")) {
-            if (param)
-                config_file = param;
-            ++argn;
-        } else {
-            printf("Unknown option: %s\n", argv[argn]);
+            usage();
+            return EXIT_SUCCESS;
         }
+        else if (streq(argv[argn], "--verbose") || streq(argv[argn], "-v")) {
+            verbose = true;
+        }
+        else if (streq(argv[argn], "--config") || streq(argv[argn], "-c")) {
+            if (!param) {
+                fprintf(stderr, "%s: Missing argument\n", argv[argn]);
+                usage();
+                return EXIT_FAILURE;
+            }
+            config_file = param;
+            ++argn;
+        }
+        else {
+            fprintf(stderr, "Unknown option: %s\n", argv[argn]);
+        }
+    }
+
+    ftylog_setInstance(AGENT_FTY_OUTAGE, FTY_COMMON_LOGGING_DEFAULT_CFG);
+
+    if (verbose) {
+        ftylog_setVerboseMode(ftylog_getInstance());
     }
 
     zconfig_t* cfg = zconfig_load(config_file);
-    logDebug("Config is {} null", cfg ? "not" : "");
     if (cfg) {
-        logConfigFile = zconfig_get(cfg, "log/config", "");
-
-        // Get maintenance mode TTL
+        // Get maintenance mode expiry (default)
         maintenance_expiration = zconfig_get(cfg, "server/maintenance_expiration", DEFAULT_MAINTENANCE_EXPIRATION);
     }
 
-    // If a log config file is configured, try to load it
-    if (!streq(logConfigFile, "")) {
-        logDebug("Try to load log configuration file : {}", logConfigFile);
-        ftylog_setConfigFile(ftylog_getInstance(), logConfigFile);
+    zactor_t* server = zactor_new(fty_outage_server, const_cast<char*>(AGENT_FTY_OUTAGE));
+    if (!server) {
+        logError("{} actor creation failed", AGENT_FTY_OUTAGE);
+        zconfig_destroy(&cfg);
+        return EXIT_FAILURE;
     }
 
-    if (verbose) {
-        ftylog_setVeboseMode(ftylog_getInstance());
-    }
-
-    // FIXME: use agent name from fty-common
-    zactor_t* server = zactor_new(fty_outage_server, const_cast<char*>("outage"));
-    //  Insert main code here
-
-    zstr_sendx(server, "STATE-FILE", "/var/lib/fty/fty-outage/state.zpl", NULL);
-    zstr_sendx(server, "TIMEOUT", "30000", NULL);
-    zstr_sendx(server, "CONNECT", "ipc://@/malamute", "fty-outage", NULL);
+    zstr_sendx(server, "STATE_FILE", state_file, NULL);
+    zstr_sendx(server, "CONNECT", MLM_ENDPOINT, AGENT_FTY_OUTAGE, NULL);
     zstr_sendx(server, "PRODUCER", FTY_PROTO_STREAM_ALERTS_SYS, NULL);
-    // zstr_sendx (server, "CONSUMER", FTY_PROTO_STREAM_METRICS, ".*", NULL);
     zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_METRICS_UNAVAILABLE, ".*", NULL);
-    zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_METRICS_SENSOR, ".*", NULL);
     zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_ASSETS, ".*", NULL);
-    if (verbose)
+    zstr_sendx(server, "DEFAULT_MAINTENANCE_EXPIRATION_SEC", maintenance_expiration, NULL);
+    if (verbose) {
         zstr_send(server, "VERBOSE");
-    zstr_sendx(server, "DEFAULT_MAINTENANCE_EXPIRATION", maintenance_expiration, NULL);
+    }
 
     // src/malamute.c, under MPL license
-    while (true) {
+    while (!zsys_interrupted) {
         char* str = zstr_recv(server);
-        if (str) {
-            puts(str);
-            zstr_free(&str);
-        } else {
-            logInfo("Interrupted ...");
-            break;
+        if (!str) {
+            break; //$TERM
         }
+        logDebug("{}", str);
+        zstr_free(&str);
     }
+
     zactor_destroy(&server);
     zconfig_destroy(&cfg);
-    return 0;
+
+    return EXIT_SUCCESS;
 }

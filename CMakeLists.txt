@@ -12,12 +12,10 @@ find_package(fty-cmake PATHS ${CMAKE_BINARY_DIR}/fty-cmake)
 
 etn_target(static ${PROJECT_NAME}-lib
     SOURCES
-        data.cc
         data.h
-        fty-outage.h
-        fty-outage-server.cc
+        data.cc
         fty-outage-server.h
-        osrv.h
+        fty-outage-server.cc
     USES
         czmq
         mlm
@@ -64,8 +62,8 @@ etn_configure_file(
 
 etn_test_target(${PROJECT_NAME}-lib
     SOURCES
-        test/data.cpp
         test/main.cpp
+        test/data.cpp
         test/outage.cpp
     PREPROCESSOR
         -DCATCH_CONFIG_FAST_COMPILE

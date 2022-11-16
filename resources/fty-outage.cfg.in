@@ -5,8 +5,6 @@ server
     background = 0      #   Run as background process
     workdir = .         #   Working directory for daemon
     verbose = 0         #   Do verbose logging of activity?
-    # Assets will be automatically returned from maintenance mode after this
-    # amount of time (in seconds), if not specified otherwise
+
+    # maintenance mode time, if not specified otherwise (seconds)
     maintenance_expiration = 3600
-log
-    config = "/etc/fty/ftylog.cfg"         #   Path to the log configuration file (optional)
