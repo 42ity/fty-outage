@@ -21,6 +21,7 @@ etn_target(static ${PROJECT_NAME}-lib
         mlm
         fty_proto
         fty_common
+        fty_common_mlm
         fty_common_logging
         fty_shm
     PRIVATE
