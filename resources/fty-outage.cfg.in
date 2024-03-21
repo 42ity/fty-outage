@@ -1,4 +1,4 @@
-#   fty-outage configuration
+#   @PROJECT_NAME@ configuration
 
 server
     timeout = 10000     #   Client connection timeout, msec

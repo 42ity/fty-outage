@@ -1,6 +1,4 @@
 /*  =========================================================================
-    data - Data
-
     Copyright (C) 2014 - 2020 Eaton
 
     This program is free software; you can redistribute it and/or modify
@@ -21,10 +19,11 @@
 
 #pragma once
 
-#include <czmq.h>
 #include <fty_proto.h>
+#include <czmq.h>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -32,19 +31,17 @@
 ///
 ////////////////////////////////////////////////////////////////////////////////
 
-///  Structure of data
-struct data_t
-{
-    zhashx_t* asset_expir;        //!< <asset_name, expiration_t*>
-    zhashx_t* asset_enames;       //!< <asset_name => asset_friendlyName> (unicode name)
-    uint64_t  default_expiry_sec; //!< default time for the asset, in what asset would be considered as not responding
-};
+/// opacified structure
+typedef struct _data_t data_t;
 
 ///  Create a new data
 data_t* data_new();
 
 ///  Destroy the data
 void data_destroy(data_t** self_p);
+
+/// Accessor on asset_expir internal hash list
+zhashx_t* data_asset_expir(data_t* self);
 
 /// Get asset friendlyName (ext. name)
 const char* data_get_asset_ename(data_t* self, const char* asset_name);
@@ -62,7 +59,7 @@ void data_put(data_t* self, fty_proto_t** proto);
 ///  Delete source from cache
 void data_delete(data_t* self, const char* source);
 
-///  Returns list of nonresponding devices, zlistx entries are refereces
+///  Returns list of nonresponding devices
 std::vector<std::string> data_get_dead_devices(data_t* self);
 
 ///  update information about expiration time
@@ -73,34 +70,3 @@ int data_touch_asset(data_t* self, const char* asset_name, uint64_t timestamp, u
 /// set/unset asset maintenance mode (choose time=0 to unset)
 /// returns 0 if success, else <0
 int data_maintenance_asset(data_t* self, const char* asset_name, uint64_t time_sec);
-
-////////////////////////////////////////////////////////////////////////////////
-///
-/// expiration_t
-///
-////////////////////////////////////////////////////////////////////////////////
-
-/// opacified structure
-typedef struct _expiration_t expiration_t;
-
-///  Create a new expiration
-expiration_t* expiration_new(uint64_t default_expiry_sec);
-
-///  Destroy the expiration
-void expiration_destroy(expiration_t** self_p);
-
-///  Update the last time seen
-void expiration_update_last_time_seen(expiration_t* self, uint64_t new_time_seen_sec);
-uint64_t expiration_last_time_seen(expiration_t* self);
-
-///  Update the ttl
-void expiration_update_ttl(expiration_t* self, uint64_t ttl_sec);
-uint64_t expiration_ttl(expiration_t* self);
-
-///  Get the expiration time (device death), in seconds
-uint64_t expiration_time(expiration_t* self);
-
-///  Handle maintenance timeout (0 if no maintenance)
-void expiration_maintenance_set(expiration_t* self, uint64_t time_sec);
-uint64_t expiration_maintenance(expiration_t* self);
-

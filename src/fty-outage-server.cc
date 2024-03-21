@@ -22,6 +22,7 @@
 
 #include "fty-outage-server.h"
 #include "data.h"
+#include "expiration.h"
 
 #include <fty_common_macros.h>
 #include <fty_common_agents.h>
@@ -34,6 +35,7 @@
 #define DISABLE_MAINTENANCE 0
 #define ENABLE_MAINTENANCE  1
 
+//  --------------------------------------------------------------------------
 // hack to allow us to pretend zhash is set
 static void* VOID_TRUE = const_cast<void*>(reinterpret_cast<const void*>("true"));
 
@@ -44,11 +46,12 @@ struct osrv_t
     data_t*       data;
     zhash_t*      active_alerts;
     char*         state_file;
-    uint64_t      default_maintenance_expiration;
+    uint64_t      default_maintenance_expiration; // sec
     uint64_t      timeout_ms;
     bool          verbose;
 };
 
+//  --------------------------------------------------------------------------
 /// destroy osrv_t object
 static void s_osrv_destroy(osrv_t** self_p)
 {
@@ -63,6 +66,7 @@ static void s_osrv_destroy(osrv_t** self_p)
     }
 }
 
+//  --------------------------------------------------------------------------
 /// create osrv_t object
 static osrv_t* s_osrv_new()
 {
@@ -79,7 +83,7 @@ static osrv_t* s_osrv_new()
         if (self->active_alerts) {
             self->state_file                     = NULL;
             self->timeout_ms                     = uint64_t(fty_get_polling_interval()) * 1000;
-            self->default_maintenance_expiration = uint64_t(atoi(DEFAULT_MAINTENANCE_EXPIRATION));
+            self->default_maintenance_expiration = 60; //sec
             self->verbose                        = false;
         }
         else {
@@ -89,6 +93,7 @@ static osrv_t* s_osrv_new()
     return self;
 }
 
+//  --------------------------------------------------------------------------
 /// save active_alerts to file
 /// returns 0 if success, else <0
 static int s_osrv_save(osrv_t* self)
@@ -124,6 +129,7 @@ static int s_osrv_save(osrv_t* self)
     return ret;
 }
 
+//  --------------------------------------------------------------------------
 /// read active_alerts from file
 /// returns 0 if success, else <0
 static int s_osrv_load(osrv_t* self)
@@ -159,7 +165,8 @@ static int s_osrv_load(osrv_t* self)
     return 0;
 }
 
-// publish 'outage' alert for asset 'source-asset' in state 'alert-state'
+//  --------------------------------------------------------------------------
+/// publish 'outage' alert for asset 'source-asset' in state 'alert-state'
 static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char* alert_state)
 {
     if (!(self && source_asset && alert_state)) {
@@ -181,7 +188,7 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
 
     zmsg_t* msg = fty_proto_encode_alert(
         NULL, // aux
-        uint64_t(zclock_time() / 1000),        // unix time (sec.)
+        uint64_t(zclock_time() / 1000),        // now, unix time (sec.)
         uint32_t(self->timeout_ms * 3 / 1000), // ttl (sec.)
         rule_name,                             // rule_name
         source_asset,
@@ -205,9 +212,10 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
     zmsg_destroy(&msg);
 }
 
-// if for asset 'source-asset' the 'outage' alert is tracked
-// * publish alert in RESOLVE state for asset 'source-asset'
-// * removes alert from the list of the active alerts
+//  --------------------------------------------------------------------------
+/// if for asset 'source-asset' the 'outage' alert is tracked
+/// * publish alert in RESOLVE state for asset 'source-asset'
+/// * removes alert from the list of the active alerts
 static void s_osrv_resolve_alert(osrv_t* self, const char* source_asset)
 {
     if (!(self && source_asset)) {
@@ -221,11 +229,11 @@ static void s_osrv_resolve_alert(osrv_t* self, const char* source_asset)
     }
 }
 
-// switch asset 'source-asset' to maintenance mode
-// this implies putting a long TTL, so that no 'outage' alert is generated
-// mode is in {ENABLE_MAINTENANCE, DISABLE_MAINTENANCE}
-// return -1, if operation failed
-// return 0 otherwise
+//  --------------------------------------------------------------------------
+/// switch asset 'source-asset' to maintenance mode
+/// this implies putting a long TTL, so that no 'outage' alert is generated
+/// mode is in {ENABLE_MAINTENANCE, DISABLE_MAINTENANCE}
+/// returns 0 if ok, else <0
 static int s_osrv_maintenance_mode(osrv_t* self, const char* source_asset, int mode, uint64_t expiration_ttl_sec)
 {
     if (!(self && self->data && source_asset)) {
@@ -240,7 +248,7 @@ static int s_osrv_maintenance_mode(osrv_t* self, const char* source_asset, int m
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
 
     // get data expiration entry (create if none)
-    expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(self->data->asset_expir, source_asset));
+    expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(data_asset_expir(self->data), source_asset));
     if (!e) {
         e = expiration_new(data_default_expiry(self->data));
         if (!e) {
@@ -248,7 +256,7 @@ static int s_osrv_maintenance_mode(osrv_t* self, const char* source_asset, int m
             return -1;
         }
         // insert
-        zhashx_insert(self->data->asset_expir, source_asset, e);
+        zhashx_insert(data_asset_expir(self->data), source_asset, e);
     }
 
     // update/set last_seen
@@ -269,9 +277,10 @@ static int s_osrv_maintenance_mode(osrv_t* self, const char* source_asset, int m
     return 0;
 }
 
-// if for asset 'source-asset' the 'outage' alert is NOT tracked
-// * publish alert in ACTIVE state for asset 'source-asset'
-// * adds alert to the list of the active alerts
+//  --------------------------------------------------------------------------
+/// if for asset 'source-asset' the 'outage' alert is NOT tracked
+/// * publish alert in ACTIVE state for asset 'source-asset'
+/// * adds alert to the list of the active alerts
 static void s_osrv_activate_alert(osrv_t* self, const char* source_asset)
 {
     if (!(self && source_asset)) {
@@ -286,6 +295,8 @@ static void s_osrv_activate_alert(osrv_t* self, const char* source_asset)
     s_osrv_send_alert(self, source_asset, "ACTIVE");
 }
 
+//  --------------------------------------------------------------------------
+//
 static void s_osrv_check_dead_devices(osrv_t* self)
 {
     if (!self) {
@@ -302,6 +313,7 @@ static void s_osrv_check_dead_devices(osrv_t* self)
     }
 }
 
+//  --------------------------------------------------------------------------
 // req asset agent for assets (re)publication on stream
 static void s_osrv_assets_republish(osrv_t* self)
 {
@@ -324,110 +336,8 @@ static void s_osrv_assets_republish(osrv_t* self)
     }
 }
 
-// handle server commands
-// take ownership on message_p
-// returns 1 if $TERM, else 0
-static int s_osrv_actor_commands(osrv_t* self, zmsg_t** message_p)
-{
-    if (!(self && message_p && (*message_p))) {
-        logDebug("bad args");
-        return 0;
-    }
-
-    zmsg_t* message = *message_p;
-    char* command = zmsg_popstr(message);
-
-    int ret = 0;
-
-    if (!command) {
-        logWarn("Empty command.");
-    }
-    else if (streq(command, "$TERM")) {
-        logTrace("{}", command);
-        ret = 1;
-    }
-    else if (streq(command, "CONNECT")) {
-        char* endpoint = zmsg_popstr(message);
-        char* address  = zmsg_popstr(message);
-        if (endpoint && address) {
-            logDebug("{}: endpoint: {}, address: {}", command, endpoint, address);
-            int r = mlm_client_connect(self->client, endpoint, 1000, address);
-            if (r != 0) {
-                logError("mlm_client_connect failed");
-            }
-        }
-        zstr_free(&endpoint);
-        zstr_free(&address);
-    }
-    else if (streq(command, "CONSUMER")) {
-        char* stream = zmsg_popstr(message);
-        char* regex  = zmsg_popstr(message);
-        if (stream && regex) {
-            logDebug("{}: {}/{}", command, stream, regex);
-            int r = mlm_client_set_consumer(self->client, stream, regex);
-            if (r != 0) {
-                logError("mlm_set_consumer failed");
-            }
-        }
-        zstr_free(&stream);
-        zstr_free(&regex);
-    }
-    else if (streq(command, "PRODUCER")) {
-        char* stream = zmsg_popstr(message);
-        if (stream) {
-            logDebug("{}: {}", command, stream);
-            int r = mlm_client_set_producer(self->client, stream);
-            if (r != 0) {
-                logError("mlm_client_set_producer");
-            }
-        }
-        zstr_free(&stream);
-    }
-    else if (streq(command, "ASSET_EXPIRY_SEC")) { // Unit test
-        char* asset_expiry = zmsg_popstr(message);
-        if (asset_expiry) {
-            auto value = uint64_t(atol(asset_expiry));
-            data_set_default_expiry(self->data, value);
-            logDebug("{}: {} s", command, value);
-        }
-        zstr_free(&asset_expiry);
-    }
-    else if (streq(command, "STATE_FILE")) {
-        char* state_file = zmsg_popstr(message);
-        if (state_file) {
-            logDebug("{}: {}", command, state_file);
-            zstr_free(&self->state_file);
-            self->state_file = strdup(state_file);
-            int r = s_osrv_load(self);
-            if (r != 0) {
-                logError("Failed to load state file {}", self->state_file);
-            }
-        }
-        zstr_free(&state_file);
-    }
-    else if (streq(command, "DEFAULT_MAINTENANCE_EXPIRATION_SEC")) {
-        char* def_expiration = zmsg_popstr(message);
-        if (def_expiration) {
-            auto value = uint64_t(atoi(def_expiration));
-            self->default_maintenance_expiration = value;
-            logDebug("{}: {} s", command, value);
-        }
-        zstr_free(&def_expiration);
-    }
-    else if (streq(command, "VERBOSE")) {
-        self->verbose = true;
-        logDebug("{}: true", command);
-    }
-    else {
-        logError("Unknown command: {}", command);
-    }
-
-    zstr_free(&command);
-    zmsg_destroy(message_p);
-
-    return ret; // 1 if $TERM, else 0
-}
-
+//  --------------------------------------------------------------------------
+//
 static void s_outage_metric_poller_process(osrv_t* self, fty::shm::shmMetrics& metrics)
 {
     if (!self) {
@@ -471,6 +381,8 @@ static void s_outage_metric_poller_process(osrv_t* self, fty::shm::shmMetrics& m
     }
 }
 
+//  --------------------------------------------------------------------------
+//
 static void s_outage_metric_poller(zsock_t* pipe, void* args)
 {
     const char* actor_name = "fty-outage-metric";
@@ -495,7 +407,7 @@ static void s_outage_metric_poller(zsock_t* pipe, void* args)
         int timeout_ms = fty_get_polling_interval() * 1000;
         void* which = zpoller_wait(poller, timeout_ms);
 
-        if (which == NULL) {
+        if (!which) {
             if (zpoller_terminated(poller) || zsys_interrupted) {
                 break;
             }
@@ -522,6 +434,111 @@ static void s_outage_metric_poller(zsock_t* pipe, void* args)
     zpoller_destroy(&poller);
 
     logInfo("{}: Ended", actor_name);
+}
+
+//  --------------------------------------------------------------------------
+// handle server commands
+// take ownership on message_p
+// returns 1 if $TERM, else 0
+static int s_osrv_handle_commands(osrv_t* self, zmsg_t** message_p)
+{
+    if (!(self && message_p && (*message_p))) {
+        logDebug("bad args");
+        return 0;
+    }
+
+    zmsg_t* message = *message_p;
+    char* command = zmsg_popstr(message);
+
+    int ret = 0;
+
+    if (!command) {
+        logWarn("Empty command.");
+    }
+    else if (streq(command, "$TERM")) {
+        logTrace("{}", command);
+        ret = 1;
+    }
+    else if (streq(command, "CONNECT")) {
+        char* endpoint = zmsg_popstr(message);
+        char* address  = zmsg_popstr(message);
+        if (endpoint && address) {
+            logDebug("{}: endpoint: {}, address: {}", command, endpoint, address);
+            int r = mlm_client_connect(self->client, endpoint, 1000, address);
+            if (r != 0) {
+                logError("mlm_client_connect failed ({}/{})", endpoint, address);
+            }
+        }
+        zstr_free(&endpoint);
+        zstr_free(&address);
+    }
+    else if (streq(command, "CONSUMER")) {
+        char* stream = zmsg_popstr(message);
+        char* filter = zmsg_popstr(message);
+        if (stream && filter) {
+            logDebug("{}: {}/{}", command, stream, filter);
+            int r = mlm_client_set_consumer(self->client, stream, filter);
+            if (r != 0) {
+                logError("mlm_set_consumer failed ({}/{})", stream, filter);
+            }
+        }
+        zstr_free(&stream);
+        zstr_free(&filter);
+    }
+    else if (streq(command, "PRODUCER")) {
+        char* stream = zmsg_popstr(message);
+        if (stream) {
+            logDebug("{}: {}", command, stream);
+            int r = mlm_client_set_producer(self->client, stream);
+            if (r != 0) {
+                logError("mlm_client_set_producer ({})", stream);
+            }
+        }
+        zstr_free(&stream);
+    }
+    else if (streq(command, "STATE_FILE")) {
+        char* state_file = zmsg_popstr(message);
+        if (state_file) {
+            logDebug("{}: {}", command, state_file);
+            zstr_free(&self->state_file);
+            self->state_file = strdup(state_file);
+            int r = s_osrv_load(self);
+            if (r != 0) {
+                logError("Failed to load state file {}", self->state_file);
+            }
+        }
+        zstr_free(&state_file);
+    }
+    else if (streq(command, "DEFAULT_MAINTENANCE_EXPIRATION_SEC")) {
+        char* expiry = zmsg_popstr(message);
+        if (expiry) {
+            auto value = uint64_t(atoi(expiry));
+            self->default_maintenance_expiration = value;
+            logDebug("{}: {} s", command, value);
+        }
+        zstr_free(&expiry);
+    }
+    else if (streq(command, "ASSET_EXPIRY_SEC")) { // Unit test
+        char* expiry = zmsg_popstr(message);
+        if (expiry) {
+            auto value = uint64_t(atol(expiry));
+            data_set_default_expiry(self->data, value);
+            logDebug("{}: {} s", command, value);
+        }
+        zstr_free(&expiry);
+    }
+    else if (streq(command, "VERBOSE")) {
+        self->verbose = true;
+        logDebug("{}: true", command);
+    }
+    else {
+        logError("Unknown command: {}", command);
+    }
+
+    zstr_free(&command);
+    zmsg_destroy(message_p);
+
+    return ret; // 1 if $TERM, else 0
 }
 
 //  --------------------------------------------------------------------------
@@ -697,7 +714,7 @@ void fty_outage_server(zsock_t* pipe, void* args)
         logError("{}: metric_poll actor creation failed", actor_name);
     }
 
-    char republish_assets = 1; // bool 0/1
+    bool republish_assets = true;
 
     while (!zsys_interrupted) {
         self->timeout_ms = uint64_t(fty_get_polling_interval() * 1000);
@@ -707,33 +724,33 @@ void fty_outage_server(zsock_t* pipe, void* args)
             if (zpoller_terminated(poller) || zsys_interrupted) {
                 break;
             }
+
             // ask to republish assets if the service is available
-            if (republish_assets && zpoller_expired(poller) && mlm_client_connected(self->client)) {
-                republish_assets = 0; // once
+            if (zpoller_expired(poller) && republish_assets && mlm_client_connected(self->client)) {
+                republish_assets = false; // once
                 s_osrv_assets_republish(self);
             }
-        }
 
-        now_ms = uint64_t(zclock_mono());
+            now_ms = uint64_t(zclock_mono());
 
-        // save the state
-        if ((now_ms - last_save_ms) > SAVE_INTERVAL_MS) {
-            int r = s_osrv_save(self);
-            if (r != 0) {
-                logError("{}: failed to save state file {}", actor_name, self->state_file);
+            // send alerts on dead devices
+            if (zpoller_expired(poller) || ((now_ms - last_dead_check_ms) > self->timeout_ms)) {
+                s_osrv_check_dead_devices(self);
+                last_dead_check_ms = uint64_t(zclock_mono());
             }
-            last_save_ms = uint64_t(zclock_mono());
-        }
 
-        // send alerts on dead devices
-        if (zpoller_expired(poller) || (now_ms - last_dead_check_ms) > self->timeout_ms) {
-            s_osrv_check_dead_devices(self);
-            last_dead_check_ms = uint64_t(zclock_mono());
+            // save the state
+            if (zpoller_expired(poller) && ((now_ms - last_save_ms) > SAVE_INTERVAL_MS)) {
+                int r = s_osrv_save(self);
+                last_save_ms = uint64_t(zclock_mono());
+                if (r != 0) {
+                    logError("{}: failed to save state file {}", actor_name, self->state_file);
+                }
+            }
         }
-
-        if (which == pipe) {
+        else if (which == pipe) {
             zmsg_t* message = zmsg_recv(pipe);
-            int r = s_osrv_actor_commands(self, &message);
+            int r = s_osrv_handle_commands(self, &message);
             zmsg_destroy(&message);
             if (r == 1) {
                 break; // $TERM
@@ -742,11 +759,13 @@ void fty_outage_server(zsock_t* pipe, void* args)
         else if (which == mlm_client_msgpipe(self->client)) {
             // react on incoming messages
             zmsg_t* message = mlm_client_recv(self->client);
+            const char* cmd = mlm_client_command(self->client);
 
-            if (!message) {
-                // nop :/
+            if (streq(cmd, "MAILBOX DELIVER")) {
+                // someone is addressing us directly
+                s_osrv_handle_mailbox(self, &message);
             }
-            else if (!fty_proto_is(message)) {
+            else if (streq(cmd, "STREAM DELIVER")) {
                 const char* address = mlm_client_address(self->client);
 
                 if (streq(address, FTY_PROTO_STREAM_METRICS_UNAVAILABLE)) {
@@ -763,30 +782,25 @@ void fty_outage_server(zsock_t* pipe, void* args)
                     }
                     zstr_free(&aux);
                 }
-                else if (streq(mlm_client_command(self->client), "MAILBOX DELIVER")) {
-                    // someone is addressing us directly
-                    s_osrv_handle_mailbox(self, &message);
-                }
-            }
-            else { // proto message
-                fty_proto_t* bmsg = fty_proto_decode(&message);
-
-                if (bmsg && (fty_proto_id(bmsg) == FTY_PROTO_ASSET))
-                {
-                    const char* operation = fty_proto_operation(bmsg);
-                    const char* status = fty_proto_aux_string(bmsg, FTY_PROTO_ASSET_STATUS, "active");
-
-                    if (streq(operation, FTY_PROTO_ASSET_OP_DELETE)
-                        || !streq(status, "active"))
+                else { // assume from FTY_PROTO_STREAM_ASSETS
+                    fty_proto_t* bmsg = fty_proto_decode(&message);
+                    if (bmsg && (fty_proto_id(bmsg) == FTY_PROTO_ASSET))
                     {
-                        const char* source = fty_proto_name(bmsg);
-                        s_osrv_resolve_alert(self, source);
+                        const char* operation = fty_proto_operation(bmsg);
+                        const char* status = fty_proto_aux_string(bmsg, FTY_PROTO_ASSET_STATUS, "active");
+
+                        if (streq(operation, FTY_PROTO_ASSET_OP_DELETE)
+                            || !streq(status, "active")
+                        )
+                        {
+                            const char* source = fty_proto_name(bmsg);
+                            s_osrv_resolve_alert(self, source);
+                        }
+
+                        data_put(self->data, &bmsg);
                     }
-
-                    data_put(self->data, &bmsg);
+                    fty_proto_destroy(&bmsg);
                 }
-
-                fty_proto_destroy(&bmsg);
             }
 
             zmsg_destroy(&message);

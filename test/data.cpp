@@ -1,76 +1,6 @@
 #include <catch2/catch.hpp>
 #include "src/data.h"
-
-TEST_CASE("expiration test0")
-{
-    expiration_t* e = expiration_new(10);
-    CHECK(e);
-    CHECK(expiration_ttl(e) == 10);
-    CHECK(expiration_last_time_seen(e) == 0);
-    CHECK(expiration_maintenance(e) == 0);
-    expiration_destroy(&e);
-    CHECK(!e);
-}
-
-TEST_CASE("expiration test1")
-{
-    expiration_t* e = expiration_new(10);
-    CHECK(e);
-
-    uint64_t old_last_seen_date = expiration_last_time_seen(e);
-
-    expiration_update_last_time_seen(e, uint64_t(zclock_time() / 1000));
-    CHECK(expiration_last_time_seen(e) != old_last_seen_date);
-
-    // from past!!
-    old_last_seen_date = expiration_last_time_seen(e);
-    expiration_update_last_time_seen(e, uint64_t(zclock_time() / 1000 - 10000));
-    CHECK(expiration_last_time_seen(e) == old_last_seen_date);
-
-    expiration_update_ttl(e, 1);
-    CHECK(expiration_ttl(e) == 1);
-
-    expiration_update_ttl(e, 10);
-    CHECK(expiration_ttl(e) == 1); // because 10 > 1
-
-    CHECK(expiration_time(e) == old_last_seen_date + 1 * 2);
-
-    expiration_destroy(&e);
-    CHECK(!e);
-}
-
-TEST_CASE("expiration test2")
-{
-    expiration_t* e = expiration_new(10);
-    CHECK(e);
-
-    expiration_update_ttl(e, 10);
-    expiration_update_last_time_seen(e, 100);
-    expiration_maintenance_set(e, 0);
-
-    CHECK(expiration_ttl(e) == 10);
-    CHECK(expiration_last_time_seen(e) == 100);
-    CHECK(expiration_maintenance(e) == 0);
-
-    CHECK(expiration_time(e) == 120); //time + 2*ttl
-
-    expiration_maintenance_set(e, 100);
-    CHECK(expiration_maintenance(e) == 100);
-    CHECK(expiration_time(e) == 120); //time + 2*ttl
-
-    expiration_maintenance_set(e, 1000);
-    CHECK(expiration_maintenance(e) == 1000);
-    CHECK(expiration_time(e) == 1000); // maintenance time
-
-    expiration_update_last_time_seen(e, 2000);
-    CHECK(expiration_maintenance(e) == 1000);
-    CHECK(expiration_time(e) == 2020); //time + 2*ttl
-
-    CHECK(expiration_maintenance(e) == 0); // auto reset
-
-    expiration_destroy(&e);
-    CHECK(!e);
-}
+#include "src/expiration.h"
 
 TEST_CASE("data test0")
 {
@@ -83,7 +13,7 @@ TEST_CASE("data test0")
 static uint64_t zhashx_get_expiration_test(data_t* self, char* source)
 {
     REQUIRE(self);
-    expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(self->asset_expir, source));
+    expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(data_asset_expir(self), source));
     return expiration_time(e);
 }
 
@@ -173,7 +103,7 @@ TEST_CASE("data test1")
     CHECK(bmsg == NULL);
     fty_proto_destroy(&bmsg);
 
-    CHECK(zhashx_lookup(data->asset_expir, "PDU1"));
+    CHECK(zhashx_lookup(data_asset_expir(data), "PDU1"));
     now_sec       = uint64_t(zclock_time() / 1000);
     uint64_t diff = zhashx_get_expiration_test(data, const_cast<char*>("PDU1")) - now_sec;
     CHECK(diff <= (data_default_expiry(data) * 2));

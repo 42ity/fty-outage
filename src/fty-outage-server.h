@@ -20,10 +20,8 @@
 */
 
 #pragma once
-#include <czmq.h>
 
-// default maintenance mode time (seconds)
-#define DEFAULT_MAINTENANCE_EXPIRATION "3600"
+#include <czmq.h>
 
 //  fty_outage_server actor
 void fty_outage_server(zsock_t* pipe, void* args);

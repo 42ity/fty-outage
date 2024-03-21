@@ -1,5 +1,5 @@
 [Unit]
-Description=fty-outage service
+Description=@PROJECT_NAME@ service
 After=malamute.service network.target
 Requires=malamute.service network.target
 

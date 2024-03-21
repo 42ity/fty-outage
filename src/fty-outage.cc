@@ -26,6 +26,9 @@
 #include <fty_log.h>
 #include <fty_proto.h>
 
+// default maintenance mode time (seconds)
+#define DEFAULT_MAINTENANCE_EXPIRATION "3600"
+
 static void usage()
 {
     printf("%s [options] ...\n", AGENT_FTY_OUTAGE);

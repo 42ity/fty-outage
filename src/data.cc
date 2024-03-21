@@ -20,6 +20,7 @@
 */
 
 #include "data.h"
+#include "expiration.h"
 #include <fty_log.h>
 
 /// it is used as TTL, but in formula we are waiting for ttl*2 ->
@@ -27,109 +28,13 @@
 /// so to get a 15 minutes outage default TTL -> we choose the half
 #define DEFAULT_ASSET_EXPIRATION_TIME_SEC ((15 * 60) / 2)
 
-
-///  Structure of our class
-struct _expiration_t
+///  Structure of data
+struct _data_t
 {
-    uint64_t last_time_seen_sec;  //!< time when some metrics were seen for that asset
-    uint64_t ttl_sec;             //!< minimal ttl seen for the asset
-    uint64_t maintenance_sec;     //!< maintenance timeout if non nul
+    zhashx_t* asset_expir;        //!< <asset_name, expiration_t*>
+    zhashx_t* asset_enames;       //!< <asset_name => asset_friendlyName> (unicode name)
+    uint64_t  default_expiry_sec; //!< default time for the asset, in what asset would be considered as not responding
 };
-
-expiration_t* expiration_new(uint64_t default_expiry_sec)
-{
-    expiration_t* self = reinterpret_cast<expiration_t*>(zmalloc(sizeof(expiration_t)));
-    if (self) {
-        self->last_time_seen_sec = 0;
-        self->ttl_sec            = default_expiry_sec;
-        self->maintenance_sec    = 0;
-    }
-    return self;
-}
-
-void expiration_destroy(expiration_t** self_p)
-{
-    if (self_p && (*self_p)) {
-        expiration_t* self = *self_p;
-        free(self);
-        *self_p = NULL;
-    }
-}
-
-// set up last_seen time
-// can only prolong time
-void expiration_update_last_time_seen(expiration_t* self, uint64_t last_time_seen_sec)
-{
-    if (!self) {
-        return;
-    }
-
-    // *only* prolong last_seen
-    if (last_time_seen_sec > self->last_time_seen_sec) {
-        logTrace("set last_time_seen to {} s", last_time_seen_sec);
-        self->last_time_seen_sec = last_time_seen_sec;
-    }
-}
-
-uint64_t expiration_last_time_seen(expiration_t* self)
-{
-    return self ? self->last_time_seen_sec : 0;
-}
-
-// set up ttl
-// can only reduce ttl
-void expiration_update_ttl(expiration_t* self, uint64_t ttl_sec)
-{
-    if (!self) {
-        return;
-    }
-
-    // *only* reduce ttl
-    if (ttl_sec < self->ttl_sec) {
-        logTrace("set ttl to {} s", ttl_sec);
-        self->ttl_sec = ttl_sec;
-    }
-}
-
-uint64_t expiration_ttl(expiration_t* self)
-{
-    return self ? self->ttl_sec : 0;
-}
-
-uint64_t expiration_time(expiration_t* self)
-{
-    if (!self) {
-        return 0;
-    }
-
-    // time without maintenance
-    uint64_t time_sec = self->last_time_seen_sec + (self->ttl_sec * 2);
-
-    if (self->maintenance_sec != 0) { // maintenance enabled?
-        if (self->maintenance_sec > time_sec) {
-            time_sec = self->maintenance_sec;
-        }
-        else {
-            // outdated, disable maintenance (auto reset)
-            logTrace("maintenance mode auto reset");
-            self->maintenance_sec = 0;
-        }
-    }
-
-    return time_sec;
-}
-
-void expiration_maintenance_set(expiration_t* self, uint64_t time_sec)
-{
-    if (self) {
-        self->maintenance_sec = time_sec;
-    }
-}
-
-uint64_t expiration_maintenance(expiration_t* self)
-{
-    return self ? self->maintenance_sec : 0;
-}
 
 //  --------------------------------------------------------------------------
 //  Destroy the data
@@ -149,28 +54,35 @@ void data_destroy(data_t** self_p)
 //  Create a new data
 data_t* data_new()
 {
-    data_t* self = reinterpret_cast<data_t*>(zmalloc(sizeof(data_t)));
-    if (!self) {
-        return NULL;
+    data_t* self = reinterpret_cast<data_t*>(malloc(sizeof(data_t)));
+    if (self) {
+        memset(self, 0, sizeof(*self));
+
+        self->asset_expir = zhashx_new();
+        self->asset_enames = zhashx_new();
+        if (!(self->asset_expir && self->asset_enames)) {
+            data_destroy(&self);
+            return NULL;
+        }
+
+        self->default_expiry_sec = DEFAULT_ASSET_EXPIRATION_TIME_SEC;
+
+        // map ename<->expiration_t*
+        zhashx_set_destructor(self->asset_expir, reinterpret_cast<zhashx_destructor_fn*>(expiration_destroy));
+        // map ename<->friendlyName
+        zhashx_set_destructor(self->asset_enames, reinterpret_cast<zhashx_destructor_fn*>(zstr_free));
     }
-
-    self->asset_expir = zhashx_new();
-    self->asset_enames = zhashx_new();
-    if (!(self->asset_expir && self->asset_enames)) {
-        data_destroy(&self);
-        return NULL;
-    }
-
-    self->default_expiry_sec = DEFAULT_ASSET_EXPIRATION_TIME_SEC;
-
-    // map ename<->expiration_t*
-    zhashx_set_destructor(self->asset_expir, reinterpret_cast<zhashx_destructor_fn*>(expiration_destroy));
-    // map ename<->friendlyName
-    zhashx_set_destructor(self->asset_enames, reinterpret_cast<zhashx_destructor_fn*>(zstr_free));
 
     return self;
 }
 
+//  ------------------------------------------------------------------------
+zhashx_t* data_asset_expir(data_t* self)
+{
+    return self ? self->asset_expir : NULL;
+}
+
+//  ------------------------------------------------------------------------
 const char* data_get_asset_ename(data_t* self, const char* asset_name)
 {
     if (self && self->asset_enames && asset_name) {
@@ -225,7 +137,7 @@ int data_touch_asset(data_t* self, const char* asset_name, uint64_t timestamp_se
     expiration_update_last_time_seen(e, timestamp_sec);
 
     logTrace("Touch {}, last_seen={} s, ttl={} s, expires_at={} s",
-        asset_name, e->last_time_seen_sec, e->ttl_sec, expiration_time(e));
+        asset_name, expiration_last_time_seen(e), expiration_ttl(e), expiration_time(e));
 
     return 0;
 }
@@ -330,7 +242,7 @@ void data_put(data_t* self, fty_proto_t** proto_p)
                 zhashx_update(self->asset_expir, asset_name, e);
 
                 logDebug("ADD {}, last_seen: {} s, ttl: {} s, expires_at: {} s",
-                    asset_name, e->last_time_seen_sec, e->ttl_sec, expiration_time(e));
+                    asset_name, expiration_last_time_seen(e), expiration_ttl(e), expiration_time(e));
             }
         }
     }
@@ -347,7 +259,7 @@ std::vector<std::string> data_get_dead_devices(data_t* self)
 
     if (self && self->asset_expir) {
         uint64_t now_sec = uint64_t(zclock_time() / 1000);
-        logDebug("dead devices (now: {} s)", now_sec);
+        logDebug("Check dead devices (now: {} s)", now_sec);
 
         for (void* it = zhashx_first(self->asset_expir); it; it = zhashx_next(self->asset_expir)) {
             auto e = static_cast<expiration_t*>(it);
