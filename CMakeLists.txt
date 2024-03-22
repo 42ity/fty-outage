@@ -16,6 +16,8 @@ etn_target(static ${PROJECT_NAME}-lib
         expiration.cc
         data.h
         data.cc
+        outage-metric.h
+        outage-metric.cc
         fty-outage-server.h
         fty-outage-server.cc
     USES
@@ -68,7 +70,8 @@ etn_test_target(${PROJECT_NAME}-lib
         test/main.cpp
         test/expiration.cpp
         test/data.cpp
-        test/outage.cpp
+        test/outage-server-metric.cpp
+        test/outage-server-alarm.cpp
     PREPROCESSOR
         -DCATCH_CONFIG_FAST_COMPILE
     SUBDIR

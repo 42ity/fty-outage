@@ -1,50 +1,58 @@
 #include <catch2/catch.hpp>
-#include <malamute.h>
-#include <fty_shm.h>
 #include "src/fty-outage-server.h"
+#include <malamute.h>
+#include <fty_log.h>
+#include <fty_shm.h>
 
-TEST_CASE("outage server test")
+TEST_CASE("outage server alarm test")
 {
     const char* outage_server_address = "fty-outage-test";
     const char* endpoint = "inproc://malamute-fty-outage-test";
 
     zactor_t* server = zactor_new(mlm_server, const_cast<char*>("Malamute"));
+    REQUIRE(server);
     zstr_sendx(server, "BIND", endpoint, NULL);
 
     int polling_value = 10;
     int wanted_ttl    = 2 * polling_value - 1;
+
     fty_shm_set_default_polling_interval(polling_value);
-    CHECK(fty_shm_set_test_dir(".") == 0);
+    REQUIRE(fty_shm_set_test_dir("./shm1") == 0);
 
     // outage actor
     zactor_t* outage_actor = zactor_new(fty_outage_server, const_cast<char*>(outage_server_address));
     REQUIRE(outage_actor);
-    //    actor commands
+
+    // actor commands
     zstr_sendx(outage_actor, "CONNECT", endpoint, outage_server_address, NULL);
     zstr_sendx(outage_actor, "PRODUCER", "_ALERTS_SYS", NULL);
     zstr_sendx(outage_actor, "CONSUMER", "ASSETS", ".*", NULL);
     zstr_sendx(outage_actor, "CONSUMER", "_METRICS_UNAVAILABLE", ".*", NULL);
     zstr_sendx(outage_actor, "ASSET_EXPIRY_SEC", "3", NULL); //seconds
     zstr_sendx(outage_actor, "DEFAULT_MAINTENANCE_EXPIRATION_SEC", "30", NULL); //seconds
+    zstr_sendx(outage_actor, "STATE_FILE", "./state-file", NULL);
     zstr_sendx(outage_actor, "VERBOSE", NULL);
 
     mlm_client_t* outage_client = mlm_client_new();
-    mlm_client_connect(outage_client, endpoint, 1000, "fty-outage-client");
+    REQUIRE(outage_client);
+    int rv = mlm_client_connect(outage_client, endpoint, 1000, "fty-outage-client");
+    CHECK(rv >= 0);
 
     mlm_client_t* asset_producer = mlm_client_new();
-    int rv = mlm_client_connect(asset_producer, endpoint, 5000, "asset-producer");
-    assert(rv >= 0);
+    REQUIRE(asset_producer);
+    rv = mlm_client_connect(asset_producer, endpoint, 5000, "asset-producer");
+    CHECK(rv >= 0);
     rv = mlm_client_set_producer(asset_producer, "ASSETS");
-    assert(rv >= 0);
+    CHECK(rv >= 0);
 
     mlm_client_t* alert_consumer = mlm_client_new();
+    REQUIRE(alert_consumer);
     rv = mlm_client_connect(alert_consumer, endpoint, 5000, "alert-consumer");
-    assert(rv >= 0);
+    CHECK(rv >= 0);
     rv = mlm_client_set_consumer(alert_consumer, FTY_PROTO_STREAM_ALERTS_SYS, ".*");
-    assert(rv >= 0);
+    CHECK(rv >= 0);
 
-    // to give a time for all the clients and actors to initialize
-    zclock_sleep(1000);
+    zclock_sleep(1000); // sync
 
     // test case 01 to send the metric with short TTL
     zmsg_t* sendmsg = NULL;
@@ -61,12 +69,10 @@ TEST_CASE("outage server test")
     rv = mlm_client_send(asset_producer, "UPS33", &sendmsg);
     REQUIRE(rv >= 0);
 
-    // expected: ACTIVE alert to be sent
     rv = fty::shm::write_metric("UPS33", "dev", "1", "c", wanted_ttl);
     REQUIRE(rv >= 0);
 
-    zclock_sleep(1000);
-
+    // expected: ACTIVE alert to be sent
     zmsg_t* msg = mlm_client_recv(alert_consumer);
     REQUIRE(msg);
     REQUIRE(fty_proto_is(msg));
@@ -131,6 +137,7 @@ TEST_CASE("outage server test")
     zmsg_addstr(request, "10"); //seconds
 
     rv = mlm_client_sendto(outage_client, outage_server_address, "TEST", NULL, 1000, &request);
+    zmsg_destroy(&request);
     REQUIRE(rv >= 0);
 
     // check MB reply
@@ -146,6 +153,7 @@ TEST_CASE("outage server test")
     CHECK(streq("OK", answer));
     zstr_free(&answer);
     zmsg_destroy(&recv);
+    zuuid_destroy(&zuuid);
 
     // check ALERT: should be "RESOLVED" since the asset is in maintenance mode
     msg = mlm_client_recv(alert_consumer);
@@ -170,7 +178,6 @@ TEST_CASE("outage server test")
     CHECK(streq(fty_proto_name(bmsg), "UPS-42"));
     CHECK(streq(fty_proto_state(bmsg), "ACTIVE"));
     fty_proto_destroy(&bmsg);
-    zuuid_destroy(&zuuid);
 
     // test case 05: RESOLVE alert when device is nonactive
     sendmsg = NULL;
@@ -201,37 +208,4 @@ TEST_CASE("outage server test")
     zactor_destroy(&outage_actor);
     zactor_destroy(&server);
     fty_shm_delete_test_dir();
-
-    //  @end
-
-    // Those are PRIVATE to actor, so won't be a part of documentation
-#if 0
-    {
-        const char* state_file = "state.zpl";
-        unlink(state_file);
-
-        s_osrv_t* self2 = s_osrv_new();
-        zhash_insert(self2->active_alerts, "DEVICE1", TRUE);
-        zhash_insert(self2->active_alerts, "DEVICE2", TRUE);
-        zhash_insert(self2->active_alerts, "DEVICE3", TRUE);
-        zhash_insert(self2->active_alerts, "DEVICE WITH SPACE", TRUE);
-        self2->state_file = strdup(state_file);
-        s_osrv_save(self2);
-        s_osrv_destroy(&self2);
-
-        self2 = s_osrv_new();
-        self2->state_file = strdup(state_file);
-        s_osrv_load(self2);
-
-        REQUIRE(zhash_size(self2->active_alerts) == 4);
-        CHECK(zhash_lookup(self2->active_alerts, "DEVICE1"));
-        CHECK(zhash_lookup(self2->active_alerts, "DEVICE2"));
-        CHECK(zhash_lookup(self2->active_alerts, "DEVICE3"));
-        CHECK(zhash_lookup(self2->active_alerts, "DEVICE WITH SPACE"));
-        CHECK(!zhash_lookup(self2->active_alerts, "DEVICE4"));
-
-        s_osrv_destroy(&self2);
-        unlink(state_file);
-    }
-#endif
 }

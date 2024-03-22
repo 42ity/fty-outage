@@ -77,7 +77,8 @@ TEST_CASE("data test1")
     zclock_sleep(5000);
 
     // give me dead devices
-    auto list = data_get_dead_devices(data);
+    now_sec = uint64_t(zclock_time() / 1000);
+    auto list = data_get_dead_devices(data, now_sec);
     REQUIRE(list.size() == 2);
 
     // update metric - exp OK
@@ -86,7 +87,8 @@ TEST_CASE("data test1")
     REQUIRE(rv == 0);
 
     // give me dead devices
-    list = data_get_dead_devices(data);
+    now_sec = uint64_t(zclock_time() / 1000);
+    list = data_get_dead_devices(data, now_sec);
     REQUIRE(list.size() == 1);
 
     // test asset message

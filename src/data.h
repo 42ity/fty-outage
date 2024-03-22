@@ -56,11 +56,13 @@ void data_set_default_expiry(data_t* self, uint64_t expiry_sec);
 ///  takes ownership on proto
 void data_put(data_t* self, fty_proto_t** proto);
 
-///  Delete source from cache
-void data_delete(data_t* self, const char* source);
+///  Delete asset from cache
+void data_delete(data_t* self, const char* asset_name);
 
 ///  Returns list of nonresponding devices
-std::vector<std::string> data_get_dead_devices(data_t* self);
+std::vector<std::string> data_get_dead_devices(data_t* self, uint64_t now_sec);
+///  Returns list of all monitored devices
+std::vector<std::string> data_get_all_devices(data_t* self);
 
 ///  update information about expiration time
 ///  return -1, if data are from future and are ignored as damaging
