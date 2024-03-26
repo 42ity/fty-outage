@@ -61,11 +61,24 @@ Second timer is implemented via zpoller timeout and publishes outage alerts for 
 
 ### Published metrics
 
-Agent doesn't publish any metrics.
+Agent produces `outage` metrics in shared memory for `ups`, `sts`, `epdu`, `sensor`, `sensorgpio` assets.
+
+Outage metric can have three values (string tokens):
+* `UNKNOWN` : the asset is in an intermediate state; outage detection is not effective.
+* `INACTIVE` : no outage detected; the asset is responsive as expected (monitoring is available).
+* `ACTIVE` : outage is detected; the asset is not responsive (monitoring is unavailable).
+
+Example:
+
+```bash
+$> fty-shm-cli ups-47637239
+Device: ups-47637239
+	2024-03-26T08:08:54Z(ttl=59s)  outage@ups-47637239 = INACTIVE
+```
 
 ### Published alerts
 
-Agent publishes alerts on \_ALERTS\_SYS stream.
+Agent publishes alerts on `_ALERTS_SYS` stream.
 
 ### Mailbox requests
 
@@ -109,13 +122,10 @@ where
   * Missing maintenance mode,
   * Unsupported maintenance mode.
 
-
 ### Stream subscriptions
 
-Agent is subscribed to streams METRICS, METRICS\_UNAVAILABLE, METRICS\_SENSOR and ASSETS.
+Agent is subscribed to `METRICS_UNAVAILABLE` and `ASSETS` streams.
 
-If it gets METRICS\_UNAVAILABLE message, it resolves all the stored alerts for specified device.
+If it gets `METRICS_UNAVAILABLE` message, it resolves all the stored alerts for specified device. [obsolete]
 
-If it gets METRICS or METRICS\_SENSOR message from a device, it resolves all the stored alerts for specified device and marks the device as active.
-
-If it gets ASSETS message, it updates the asset cache. If the message is for operation DELETE or RETIRE, it resolves all the alerts for specified device.
+If it gets `ASSETS` message, it updates the asset cache. If the message is for operation DELETE or RETIRE, it resolves all the alerts for specified device.
