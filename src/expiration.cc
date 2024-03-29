@@ -44,6 +44,7 @@ void expiration_destroy(expiration_t** self_p)
 {
     if (self_p && (*self_p)) {
         expiration_t* self = *self_p;
+        memset(self, 0, sizeof(*self));
         free(self);
         *self_p = NULL;
     }
@@ -58,7 +59,7 @@ void expiration_update_last_time_seen(expiration_t* self, uint64_t last_time_see
     }
 
     // *only* prolong last_seen
-    if (last_time_seen_sec > self->last_time_seen_sec) {
+    if (self->last_time_seen_sec < last_time_seen_sec) {
         logTrace("set last_time_seen to {} s", last_time_seen_sec);
         self->last_time_seen_sec = last_time_seen_sec;
     }
@@ -78,7 +79,7 @@ void expiration_update_ttl(expiration_t* self, uint64_t ttl_sec)
     }
 
     // *only* reduce ttl
-    if (ttl_sec < self->ttl_sec) {
+    if (self->ttl_sec > ttl_sec) {
         logTrace("set ttl to {} s", ttl_sec);
         self->ttl_sec = ttl_sec;
     }

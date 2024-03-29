@@ -83,6 +83,15 @@ zhashx_t* data_asset_expir(data_t* self)
 }
 
 //  ------------------------------------------------------------------------
+bool data_asset_in_list(data_t* self, const char* asset_name)
+{
+    if (self && self->asset_expir && asset_name) {
+        return (zhashx_lookup(self->asset_expir, asset_name) != NULL);
+    }
+    return false;
+}
+
+//  ------------------------------------------------------------------------
 const char* data_get_asset_ename(data_t* self, const char* asset_name)
 {
     if (self && self->asset_enames && asset_name) {
@@ -91,7 +100,6 @@ const char* data_get_asset_ename(data_t* self, const char* asset_name)
             return reinterpret_cast<const char*>(it);
         }
     }
-
     return "";
 }
 
@@ -237,9 +245,8 @@ void data_put(data_t* self, fty_proto_t** proto_p)
         }
 
         // if this asset is not known yet -> add it to the cache
-        expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(self->asset_expir, asset_name));
-        if (!e) {
-            e = expiration_new(self->default_expiry_sec);
+        if (!zhashx_lookup(self->asset_expir, asset_name)) {
+            expiration_t* e = expiration_new(self->default_expiry_sec);
             if (!e) {
                 logError("expiration_new() failed");
             }
@@ -252,10 +259,10 @@ void data_put(data_t* self, fty_proto_t** proto_p)
                 logDebug("ADD {}, last_seen: {} s, ttl: {} s, expires_at: {} s",
                     asset_name, expiration_last_time_seen(e), expiration_ttl(e), expiration_time(e));
 
-                // write outage metric as unknown (wait for metric pooling)
+                // write outage metric as unknown (wait for metric polling)
                 unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
                 using namespace fty::shm;
-                outage::write(asset_name, outage::Status::UNKNOWN, ttl_sec, 0 /*now_sec*/);
+                outage::write(asset_name, outage::Status::UNKNOWN, ttl_sec, now_sec);
             }
         }
     }

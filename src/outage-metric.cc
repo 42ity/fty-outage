@@ -69,7 +69,12 @@ int write(const char* asset, Status status, unsigned ttl_sec, uint64_t now_sec_)
         return -1;
     }
 
-    logDebug("{}@{}/{} (ttl={}s)", TYPE, asset, value, std::to_string(ttl_sec));
+    if (status == Status::ACTIVE) {
+        logInfo("{}@{}/{} (ttl={}s)", TYPE, asset, value, std::to_string(ttl_sec));
+    }
+    else {
+        logDebug("{}@{}/{} (ttl={}s)", TYPE, asset, value, std::to_string(ttl_sec));
+    }
     return 0; // ok
 }
 

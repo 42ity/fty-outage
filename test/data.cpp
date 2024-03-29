@@ -64,6 +64,13 @@ TEST_CASE("data test1")
         fty_proto_destroy(&proto_n);
     }
 
+    CHECK(data_asset_in_list(NULL, NULL) == false);
+    CHECK(data_asset_in_list(NULL, "fake") == false);
+    CHECK(data_asset_in_list(data, "") == false);
+    CHECK(data_asset_in_list(data, "fake") == false);
+    CHECK(data_asset_in_list(data, "UPS3") == true);
+    CHECK(data_asset_in_list(data, "UPS4") == true);
+
     // create new metric UPS4 - exp NOK
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
     int      rv      = data_touch_asset(data, "UPS4", now_sec, 3, now_sec);

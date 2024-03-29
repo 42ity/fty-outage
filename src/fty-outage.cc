@@ -46,18 +46,19 @@ int main(int argc, char* argv[])
 
     // Parse command line
     for (int argn = 1; argn < argc; argn++) {
-        char* param = (argn < argc - 1) ? argv[argn + 1] : NULL;
+        char* arg = argv[argn];
+        char* param = (argn < (argc - 1)) ? argv[argn + 1] : NULL;
 
-        if (streq(argv[argn], "--help") || streq(argv[argn], "-h")) {
+        if (streq(arg, "--help") || streq(arg, "-h")) {
             usage();
             return EXIT_SUCCESS;
         }
-        else if (streq(argv[argn], "--verbose") || streq(argv[argn], "-v")) {
+        else if (streq(arg, "--verbose") || streq(arg, "-v")) {
             verbose = true;
         }
-        else if (streq(argv[argn], "--config") || streq(argv[argn], "-c")) {
+        else if (streq(arg, "--config") || streq(arg, "-c")) {
             if (!param) {
-                fprintf(stderr, "%s: Missing argument\n", argv[argn]);
+                fprintf(stderr, "%s: Missing argument\n", arg);
                 usage();
                 return EXIT_FAILURE;
             }
@@ -65,7 +66,7 @@ int main(int argc, char* argv[])
             ++argn;
         }
         else {
-            fprintf(stderr, "Unknown option: %s\n", argv[argn]);
+            fprintf(stderr, "Unknown option: %s\n", arg);
         }
     }
 

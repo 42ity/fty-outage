@@ -83,7 +83,7 @@ static osrv_t* s_osrv_new()
         if (self->active_alerts) {
             self->state_file                     = NULL;
             self->timeout_ms                     = uint64_t(fty_get_polling_interval()) * 1000;
-            self->default_maintenance_expiration = 60; //sec
+            self->default_maintenance_expiration = 60; // default (sec)
             self->verbose                        = false;
         }
         else {
@@ -306,7 +306,7 @@ static void s_osrv_check_dead_devices(osrv_t* self)
 
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
 
-    std::vector<std::string> devices = data_get_dead_devices(self->data, now_sec);
+    std::vector<std::string> devices{data_get_dead_devices(self->data, now_sec)};
     logDebug("Dead devices (size: {})", devices.size());
     for (const auto& asset_name : devices) {
         s_osrv_activate_alert(self, asset_name.c_str());
@@ -352,8 +352,9 @@ static void s_outage_metric_poller_process(osrv_t* self)
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
 
     std::vector<std::string> aliveAssets;
+    aliveAssets.reserve(zhashx_size(data_asset_expir(self->data)));
 
-    for (auto& metric : metrics) {
+    for (const auto& metric : metrics) {
         const char* is_computed = fty_proto_aux_string(metric, "x-cm-count", NULL);
         if (is_computed) {
             continue; // ignore computed metrics
@@ -372,9 +373,9 @@ static void s_outage_metric_poller_process(osrv_t* self)
             }
         }
 
-        if (asset_name) {
-            logDebug("{} is alive (type: {}, time: {}, ttl: {})", asset_name,
-            fty_proto_type(metric), fty_proto_time(metric), fty_proto_ttl(metric));
+        if (asset_name && data_asset_in_list(self->data, asset_name)) {
+            logTrace("{} is alive (type: {}, time: {}, ttl: {})",
+                asset_name, fty_proto_type(metric), fty_proto_time(metric), fty_proto_ttl(metric));
 
             uint64_t timestamp_sec = fty_proto_time(metric);
             uint64_t ttl_sec = fty_proto_ttl(metric);
@@ -383,23 +384,23 @@ static void s_outage_metric_poller_process(osrv_t* self)
                 logWarn("{} metric is from future!", asset_name);
             }
 
-            s_osrv_resolve_alert(self, asset_name);
-
-            // asset is alive
+            // asset is alive (first time)
             if (std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) == aliveAssets.end()) {
+                // resolve pending alert on asset
+                s_osrv_resolve_alert(self, asset_name);
+                // push asset as alive
                 aliveAssets.push_back(asset_name);
             }
         }
     }
 
-    // update outage metrics
-    now_sec = uint64_t(zclock_time() / 1000);
+    // update outage metrics for all assets
     unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
     std::vector<std::string> allAssets{data_get_all_devices(self->data)};
     for (const auto& asset_name : allAssets) {
-        bool dead = std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) == aliveAssets.end();
+        bool isAlive = std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) != aliveAssets.end();
         using namespace fty::shm;
-        outage::write(asset_name.c_str(), dead ? outage::Status::ACTIVE : outage::Status::INACTIVE, ttl_sec, now_sec);
+        outage::write(asset_name.c_str(), isAlive ? outage::Status::INACTIVE : outage::Status::ACTIVE, ttl_sec, now_sec);
     }
 }
 
@@ -749,12 +750,6 @@ void fty_outage_server(zsock_t* pipe, void* args)
             }
 
             if (zpoller_expired(poller)) {
-                // ask to republish assets if the service is available
-                if (republish_assets && mlm_client_connected(self->client)) {
-                    republish_assets = false; // once
-                    s_osrv_assets_republish(self);
-                }
-
                 // save the state
                 if ((now_ms - last_save_ms) > SAVE_INTERVAL_MS) {
                     int r = s_osrv_save(self);
@@ -764,6 +759,12 @@ void fty_outage_server(zsock_t* pipe, void* args)
                     }
                 }
             }
+        }
+
+        // ask to republish assets if the service is available
+        if (republish_assets && mlm_client_connected(self->client)) {
+            republish_assets = false; // once
+            s_osrv_assets_republish(self);
         }
 
         // send alerts on dead devices

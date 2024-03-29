@@ -43,6 +43,9 @@ void data_destroy(data_t** self_p);
 /// Accessor on asset_expir internal hash list
 zhashx_t* data_asset_expir(data_t* self);
 
+/// Says if asset in owned by data (asset_expir internal list)
+bool data_asset_in_list(data_t* self, const char* asset_name);
+
 /// Get asset friendlyName (ext. name)
 const char* data_get_asset_ename(data_t* self, const char* asset_name);
 
