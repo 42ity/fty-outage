@@ -1,6 +1,8 @@
 # fty-outage
 
-Agent fty-outage produces pure alerts on \_ALERTS\_SYS when no data are coming from the device.
+Agent fty-outage produces, when no data are coming from a device:
+* `outage` alert on \_ALERTS\_SYS .
+* `outage` metric on shared memory
 
 ## How to build
 
@@ -39,9 +41,7 @@ systemctl start fty-outage
 
 ### Configuration file
 
-Configuration file - fty-outage.cfg - is currently ignored.
-
-Agent reads environment variable BIOS\_LOG\_LEVEL which controls verbosity level.
+Agent reads configuration file given as `-c` argument.
 
 State file for fty-outage is stored in /var/lib/fty/fty-outage.zpl.
 
@@ -61,7 +61,7 @@ Second timer is implemented via zpoller timeout and publishes outage alerts for 
 
 ### Published metrics
 
-Agent produces `outage` metrics in shared memory for `ups`, `sts`, `epdu`, `sensor`, `sensorgpio` assets.
+Agent manages `outage` metrics in shared memory for `ups`, `sts`, `epdu`, `sensor`, `sensorgpio` active assets.
 
 Outage metric can have three values (string tokens):
 * `UNKNOWN` : the asset is in an intermediate state; outage detection is not effective.
@@ -79,6 +79,8 @@ Device: ups-47637239
 ### Published alerts
 
 Agent publishes alerts on `_ALERTS_SYS` stream.
+
+It manages alerts for `ups`, `sts`, `epdu`, `sensor`, `sensorgpio` active assets.
 
 ### Mailbox requests
 

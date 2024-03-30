@@ -191,14 +191,12 @@ void data_delete(data_t* self, const char* asset_name)
 
 void data_put(data_t* self, fty_proto_t** proto_p)
 {
-    if (!(self && proto_p && (*proto_p))) {
-        return;
-    }
+    // take ownership on proto_p
+    fty_proto_t* proto = NULL;
+    if (proto_p) { proto = *proto_p; *proto_p = NULL; }
 
-    fty_proto_t* proto = *proto_p;
-
-    if (fty_proto_id(proto) != FTY_PROTO_ASSET) {
-        fty_proto_destroy(proto_p);
+    if (!(self && proto && (fty_proto_id(proto) == FTY_PROTO_ASSET))) {
+        fty_proto_destroy(&proto);
         return;
     }
 
@@ -218,7 +216,7 @@ void data_put(data_t* self, fty_proto_t** proto_p)
         logDebug("Delete {}", asset_name);
 
         if (zhashx_lookup(self->asset_expir, asset_name)) {
-            // write outage metric as unknown (deletion)
+            // write outage metric as unknown (deletion/deactivation)
             unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
             using namespace fty::shm;
             outage::write(asset_name, outage::Status::UNKNOWN, ttl_sec, 0 /*now_sec*/);
@@ -249,9 +247,12 @@ void data_put(data_t* self, fty_proto_t** proto_p)
             expiration_t* e = expiration_new(self->default_expiry_sec);
             if (!e) {
                 logError("expiration_new() failed");
+                // cleanup enames cache
+                zhashx_delete(self->asset_enames, asset_name);
             }
             else {
                 uint64_t now_sec = uint64_t(zclock_time() / 1000);
+
                 expiration_update_last_time_seen(e, now_sec);
 
                 zhashx_update(self->asset_expir, asset_name, e);
@@ -267,7 +268,7 @@ void data_put(data_t* self, fty_proto_t** proto_p)
         }
     }
 
-    fty_proto_destroy(proto_p);
+    fty_proto_destroy(&proto);
 }
 
 // --------------------------------------------------------------------------
@@ -298,6 +299,9 @@ std::vector<std::string> data_get_dead_devices(data_t* self, uint64_t now_sec)
 
     return devices;
 }
+
+// --------------------------------------------------------------------------
+// get all handled devices
 
 std::vector<std::string> data_get_all_devices(data_t* self)
 {

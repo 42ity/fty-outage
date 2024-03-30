@@ -64,6 +64,9 @@ TEST_CASE("data test1")
         fty_proto_destroy(&proto_n);
     }
 
+    std::vector<std::string> allDevices{data_get_all_devices(data)};
+    REQUIRE(allDevices.size() == 2);
+
     CHECK(data_asset_in_list(NULL, NULL) == false);
     CHECK(data_asset_in_list(NULL, "fake") == false);
     CHECK(data_asset_in_list(data, "") == false);

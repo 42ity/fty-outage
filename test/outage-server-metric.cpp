@@ -48,8 +48,8 @@ TEST_CASE("outage server metric shm test")
 
 TEST_CASE("outage server metric test")
 {
-    const char* outage_server_address = "fty-outage-test";
-    const char* endpoint = "inproc://malamute-fty-outage-test";
+    const char* outage_server_address = "fty-outage-test-metric";
+    const char* endpoint = "inproc://malamute-fty-outage-test-metric";
 
     zactor_t* server = zactor_new(mlm_server, const_cast<char*>("Malamute"));
     REQUIRE(server);
@@ -67,6 +67,7 @@ TEST_CASE("outage server metric test")
 
     // actor commands
     zstr_sendx(outage_actor, "CONNECT", endpoint, outage_server_address, NULL);
+    zstr_sendx(outage_actor, "PRODUCER", "_ALERTS_SYS", NULL);
     zstr_sendx(outage_actor, "CONSUMER", "ASSETS", ".*", NULL);
     zstr_sendx(outage_actor, "VERBOSE", NULL);
 
@@ -76,6 +77,8 @@ TEST_CASE("outage server metric test")
     CHECK(rv >= 0);
     rv = mlm_client_set_producer(asset_producer, "ASSETS");
     CHECK(rv >= 0);
+
+    zclock_sleep(1000); // sync
 
     // create asset UPS33
     zmsg_t* sendmsg = NULL;
@@ -110,7 +113,6 @@ TEST_CASE("outage server metric test")
     zclock_sleep(1000); // sync
 
     // outage metrics are in unknown state (not polled yet)
-    print_metrics();
     CHECK(outage_metric_value("UPS33") == "UNKNOWN");
     CHECK(outage_metric_value("EPDU44") == "UNKNOWN");
 
@@ -160,8 +162,8 @@ TEST_CASE("outage server metric test")
     rv = mlm_client_send(asset_producer, "UPS33", &sendmsg);
     REQUIRE(rv >= 0);
 
-    // unpopulate EPDU44 (short ttl)
-    rv = fty::shm::write_metric("EPDU44", "dev", "1", "c", polling_value / 2);
+    // unpopulate EPDU44 (ttl = 1 sec.)
+    rv = fty::shm::write_metric("EPDU44", "dev", "1", "c", 1);
     REQUIRE(rv >= 0);
 
     // wait poll sync
@@ -170,7 +172,14 @@ TEST_CASE("outage server metric test")
     // UPS is deleted / EPDU is down
     print_metrics();
     CHECK(outage_metric_value("UPS33") == "UNKNOWN");
-    CHECK(outage_metric_value("EPDU44") == "ACTIVE"); // metric is gone
+    CHECK(outage_metric_value("EPDU44") == "ACTIVE");
+
+    // wait poll sync
+    zclock_sleep((polling_value + 1) * 1000);
+
+    print_metrics();
+    CHECK(outage_metric_value("UPS33") == "failed"); // no outage metric available
+    CHECK(outage_metric_value("EPDU44") == "ACTIVE");
 
     // done, cleanup
     mlm_client_destroy(&asset_producer);

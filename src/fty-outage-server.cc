@@ -27,8 +27,10 @@
 #include <fty_common_macros.h>
 #include <fty_common_agents.h>
 #include <fty_log.h>
+#include <fty_proto.h>
 #include <fty_shm.h>
 #include <malamute.h>
+#include <algorithm>
 
 #define SAVE_INTERVAL_MS (45 * 60 * 1000) // store state each 45 minutes
 
@@ -206,10 +208,10 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
         logError("Cannot send outage alert on '{}'", source_asset);
     }
 
-    zlist_destroy(&actions);
+    zmsg_destroy(&msg);
     zstr_free(&subject);
     zstr_free(&rule_name);
-    zmsg_destroy(&msg);
+    zlist_destroy(&actions);
 }
 
 //  --------------------------------------------------------------------------
@@ -384,7 +386,7 @@ static void s_outage_metric_poller_process(osrv_t* self)
                 logWarn("{} metric is from future!", asset_name);
             }
 
-            // asset is alive (first time)
+            // asset is alive (first time detection)
             if (std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) == aliveAssets.end()) {
                 // resolve pending alert on asset
                 s_osrv_resolve_alert(self, asset_name);
@@ -398,9 +400,9 @@ static void s_outage_metric_poller_process(osrv_t* self)
     unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
     std::vector<std::string> allAssets{data_get_all_devices(self->data)};
     for (const auto& asset_name : allAssets) {
-        bool isAlive = std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) != aliveAssets.end();
+        bool isDead = std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) == aliveAssets.end();
         using namespace fty::shm;
-        outage::write(asset_name.c_str(), isAlive ? outage::Status::INACTIVE : outage::Status::ACTIVE, ttl_sec, now_sec);
+        outage::write(asset_name.c_str(), (isDead ? outage::Status::ACTIVE : outage::Status::INACTIVE), ttl_sec, now_sec);
     }
 }
 
@@ -408,7 +410,7 @@ static void s_outage_metric_poller_process(osrv_t* self)
 //
 static void s_outage_metric_poller(zsock_t* pipe, void* args)
 {
-    const char* actor_name = "fty-outage-metric";
+    const char* actor_name = "fty-outage-metric-poller";
 
     osrv_t* osrv = reinterpret_cast<osrv_t*>(args);
     if (!osrv) {
@@ -785,10 +787,11 @@ void fty_outage_server(zsock_t* pipe, void* args)
             // react on incoming messages
             zmsg_t* message = mlm_client_recv(self->client);
             const char* cmd = mlm_client_command(self->client);
+            const char* address = mlm_client_address(self->client);
+
+            logDebug("{}: recv {} from {}", actor_name, cmd, address);
 
             if (streq(cmd, "STREAM DELIVER")) {
-                const char* address = mlm_client_address(self->client);
-
                 if (streq(address, FTY_PROTO_STREAM_METRICS_UNAVAILABLE)) {
                     char* aux = zmsg_popstr(message);
                     if (aux && streq(aux, "METRICUNAVAILABLE")) {
@@ -810,12 +813,9 @@ void fty_outage_server(zsock_t* pipe, void* args)
                         const char* operation = fty_proto_operation(proto);
                         const char* status = fty_proto_aux_string(proto, FTY_PROTO_ASSET_STATUS, "active");
 
-                        if (streq(operation, FTY_PROTO_ASSET_OP_DELETE)
-                            || !streq(status, "active")
-                        )
-                        {
-                            const char* asset_name = fty_proto_name(proto);
-                            s_osrv_resolve_alert(self, asset_name);
+                        // resolve pending alert on asset deletion/deactivation
+                        if (streq(operation, FTY_PROTO_ASSET_OP_DELETE) || !streq(status, "active")) {
+                            s_osrv_resolve_alert(self, fty_proto_name(proto));
                         }
 
                         data_put(self->data, &proto);
