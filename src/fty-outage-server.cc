@@ -51,6 +51,8 @@ struct osrv_t
     uint64_t      default_maintenance_expiration; // sec
     uint64_t      timeout_ms;
     bool          verbose;
+    zhashx_t*     incoming_metrics; // incoming from METRICS stream
+    bool          populate_outage_metrics; // write outage metrics in shared memory?
 };
 
 //  --------------------------------------------------------------------------
@@ -63,6 +65,7 @@ static void s_osrv_destroy(osrv_t** self_p)
         data_destroy(&self->data);
         mlm_client_destroy(&self->client);
         zstr_free(&self->state_file);
+        zhashx_destroy(&self->incoming_metrics);
         free(self);
         *self_p = NULL;
     }
@@ -73,26 +76,39 @@ static void s_osrv_destroy(osrv_t** self_p)
 static osrv_t* s_osrv_new()
 {
     osrv_t* self = reinterpret_cast<osrv_t*>(malloc(sizeof(osrv_t)));
-    if (self) {
+    do {
+        if (!self) {
+            break;
+        }
         memset(self, 0, sizeof(*self));
+
         self->client = mlm_client_new();
-        if (self->client) {
-            self->data = data_new();
+        self->data = data_new();
+        self->active_alerts = zhash_new();
+        self->incoming_metrics = zhashx_new();
+
+        if (!(self->client && self->data && self->active_alerts && self->incoming_metrics)) {
+            break;
         }
-        if (self->data) {
-            self->active_alerts = zhash_new();
-        }
-        if (self->active_alerts) {
-            self->state_file                     = NULL;
-            self->timeout_ms                     = uint64_t(fty_get_polling_interval()) * 1000;
-            self->default_maintenance_expiration = 60; // default (sec)
-            self->verbose                        = false;
-        }
-        else {
-            s_osrv_destroy(&self);
-        }
-    }
-    return self;
+
+        // map metric@name<->fty_proto_t*
+        zhashx_set_destructor(self->incoming_metrics, reinterpret_cast<zhashx_destructor_fn*>(fty_proto_destroy));
+        zhashx_set_duplicator(self->incoming_metrics, reinterpret_cast<zhashx_duplicator_fn*>(fty_proto_dup));
+
+        // defaults
+        self->state_file = NULL;
+        self->timeout_ms = uint64_t(fty_get_polling_interval()) * 1000; // msec
+        self->verbose = false;
+        self->default_maintenance_expiration = 60; // sec
+        self->populate_outage_metrics = false;
+
+        data_populate_outage_metrics(self->data, self->populate_outage_metrics);
+
+        return self;
+    } while(0);
+
+    s_osrv_destroy(&self);
+    return NULL;
 }
 
 //  --------------------------------------------------------------------------
@@ -347,11 +363,33 @@ static void s_outage_metric_poller_process(osrv_t* self)
         return;
     }
 
-    // get all metrics available
+    // get all metrics available in shared memory
     fty::shm::shmMetrics metrics;
     fty::shm::read_metrics(".*", ".*", metrics);
 
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
+
+    if (self->incoming_metrics) {
+        // complete metrics with incomings
+        std::vector<std::string> outdated;
+        for (void* it = zhashx_first(self->incoming_metrics); it; it = zhashx_next(self->incoming_metrics)) {
+            fty_proto_t* metric = static_cast<fty_proto_t*>(it);
+            if ((fty_proto_time(metric) + fty_proto_ttl(metric)) <= now_sec) {
+                // metric is outdated
+                const char* key = static_cast<const char*>(zhashx_cursor(self->incoming_metrics));
+                outdated.push_back(key);
+            }
+            else {
+                metrics.add(fty_proto_dup(metric));
+            }
+        }
+
+        // update incoming_metrics (rm outdated)
+        for (const auto& key : outdated) {
+            logDebug("remove outdated metric {}", key);
+            zhashx_delete(self->incoming_metrics, key.c_str());
+        }
+    }
 
     std::vector<std::string> aliveAssets;
     aliveAssets.reserve(zhashx_size(data_asset_expir(self->data)));
@@ -396,13 +434,15 @@ static void s_outage_metric_poller_process(osrv_t* self)
         }
     }
 
-    // update outage metrics for all assets
-    unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
-    std::vector<std::string> allAssets{data_get_all_devices(self->data)};
-    for (const auto& asset_name : allAssets) {
-        bool isDead = std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) == aliveAssets.end();
-        using namespace fty::shm;
-        outage::write(asset_name.c_str(), (isDead ? outage::Status::ACTIVE : outage::Status::INACTIVE), ttl_sec, now_sec);
+    if (self->populate_outage_metrics) {
+        // update outage metrics for all assets (write in shared memory)
+        unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
+        std::vector<std::string> allAssets{data_get_all_devices(self->data)};
+        for (const auto& asset_name : allAssets) {
+            bool isDead = std::find(aliveAssets.begin(), aliveAssets.end(), asset_name) == aliveAssets.end();
+            using namespace fty::shm;
+            outage::write(asset_name.c_str(), (isDead ? outage::Status::ACTIVE : outage::Status::INACTIVE), ttl_sec, now_sec);
+        }
     }
 }
 
@@ -549,6 +589,14 @@ static int s_osrv_handle_commands(osrv_t* self, zmsg_t** message_p)
             logDebug("{}: {} s", command, value);
         }
         zstr_free(&expiry);
+    }
+    else if (streq(command, "POPULATE_OUTAGE_METRICS")) {
+        char* aux = zmsg_popstr(message);
+        self->populate_outage_metrics = (aux && (streq(aux, "1") || streq(aux, "TRUE")));
+        logDebug("{}: {}", command, (self->populate_outage_metrics ? "TRUE" : "FALSE"));
+        zstr_free(&aux);
+
+        data_populate_outage_metrics(self->data, self->populate_outage_metrics);
     }
     else if (streq(command, "VERBOSE")) {
         self->verbose = true;
@@ -789,7 +837,7 @@ void fty_outage_server(zsock_t* pipe, void* args)
             const char* cmd = mlm_client_command(self->client);
             const char* address = mlm_client_address(self->client);
 
-            logDebug("{}: recv {} from {}", actor_name, cmd, address);
+            //logDebug("{}: recv {} from {}", actor_name, cmd, address);
 
             if (streq(cmd, "STREAM DELIVER")) {
                 if (streq(address, FTY_PROTO_STREAM_METRICS_UNAVAILABLE)) {
@@ -806,12 +854,15 @@ void fty_outage_server(zsock_t* pipe, void* args)
                     }
                     zstr_free(&aux);
                 }
-                else { // assume from FTY_PROTO_STREAM_ASSETS
+                else { // from FTY_PROTO streams
                     fty_proto_t* proto = fty_proto_decode(&message);
                     if (proto && (fty_proto_id(proto) == FTY_PROTO_ASSET))
                     {
+                        // notification from stream ASSETS
                         const char* operation = fty_proto_operation(proto);
                         const char* status = fty_proto_aux_string(proto, FTY_PROTO_ASSET_STATUS, "active");
+
+                        logDebug("{}/{}/{}", address, operation, fty_proto_name(proto));
 
                         // resolve pending alert on asset deletion/deactivation
                         if (streq(operation, FTY_PROTO_ASSET_OP_DELETE) || !streq(status, "active")) {
@@ -819,6 +870,16 @@ void fty_outage_server(zsock_t* pipe, void* args)
                         }
 
                         data_put(self->data, &proto);
+                    }
+                    else if (proto && (fty_proto_id(proto) == FTY_PROTO_METRIC)) {
+                        // coming from stream METRICS_SENSOR
+                        char* metricName = NULL;
+                        asprintf(&metricName, "%s@%s", fty_proto_type(proto), fty_proto_name(proto));
+
+                        logDebug("{}/{}", address, metricName);
+
+                        zhashx_update(self->incoming_metrics, metricName, proto);
+                        zstr_free(&metricName);
                     }
                     fty_proto_destroy(&proto);
                 }

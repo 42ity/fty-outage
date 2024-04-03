@@ -34,6 +34,7 @@ struct _data_t
     zhashx_t* asset_expir;        //!< <asset_name, expiration_t*>
     zhashx_t* asset_enames;       //!< <asset_name => asset_friendlyName> (unicode name)
     uint64_t  default_expiry_sec; //!< default time for the asset, in what asset would be considered as not responding
+    bool      populate_outage_metrics; //!< write outage metrics in shared memory?
 };
 
 //  --------------------------------------------------------------------------
@@ -55,25 +56,39 @@ void data_destroy(data_t** self_p)
 data_t* data_new()
 {
     data_t* self = reinterpret_cast<data_t*>(malloc(sizeof(data_t)));
-    if (self) {
+    do {
+        if (!self) {
+            break;
+        }
         memset(self, 0, sizeof(*self));
 
         self->asset_expir = zhashx_new();
         self->asset_enames = zhashx_new();
         if (!(self->asset_expir && self->asset_enames)) {
-            data_destroy(&self);
-            return NULL;
+            break;
         }
 
         self->default_expiry_sec = DEFAULT_ASSET_EXPIRY_SEC;
+        self->populate_outage_metrics = false;
 
         // map iname<->expiration_t*
         zhashx_set_destructor(self->asset_expir, reinterpret_cast<zhashx_destructor_fn*>(expiration_destroy));
         // map iname<->friendlyName
         zhashx_set_destructor(self->asset_enames, reinterpret_cast<zhashx_destructor_fn*>(zstr_free));
-    }
 
-    return self;
+        return self;
+    } while(0);
+
+    data_destroy(&self);
+    return NULL;
+}
+
+//  ------------------------------------------------------------------------
+void data_populate_outage_metrics(data_t* self, bool value)
+{
+    if (self) {
+        self->populate_outage_metrics = value;
+    }
 }
 
 //  ------------------------------------------------------------------------
@@ -215,7 +230,7 @@ void data_put(data_t* self, fty_proto_t** proto_p)
     ) {
         logDebug("Delete {}", asset_name);
 
-        if (zhashx_lookup(self->asset_expir, asset_name)) {
+        if (self->populate_outage_metrics && zhashx_lookup(self->asset_expir, asset_name)) {
             // write outage metric as unknown (deletion/deactivation)
             unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
             using namespace fty::shm;
@@ -260,10 +275,12 @@ void data_put(data_t* self, fty_proto_t** proto_p)
                 logDebug("ADD {}, last_seen: {} s, ttl: {} s, expires_at: {} s",
                     asset_name, expiration_last_time_seen(e), expiration_ttl(e), expiration_time(e));
 
-                // write outage metric as unknown (wait for metric polling)
-                unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
-                using namespace fty::shm;
-                outage::write(asset_name, outage::Status::UNKNOWN, ttl_sec, now_sec);
+                if (self->populate_outage_metrics) {
+                    // write outage metric as unknown (wait for metric polling)
+                    unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
+                    using namespace fty::shm;
+                    outage::write(asset_name, outage::Status::UNKNOWN, ttl_sec, now_sec);
+                }
             }
         }
     }

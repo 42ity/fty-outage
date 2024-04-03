@@ -63,6 +63,8 @@ Second timer is implemented via zpoller timeout and publishes outage alerts for 
 
 Agent manages `outage` metrics in shared memory for `ups`, `sts`, `epdu`, `sensor`, `sensorgpio` active assets.
 
+This feature is optional (see configuration file, `server/populate_outage_metrics`)
+
 Outage metric can have three values (string tokens):
 * `UNKNOWN` : the asset is in an intermediate state; outage detection is not effective.
 * `INACTIVE` : no outage detected; the asset is responsive as expected (monitoring is available).

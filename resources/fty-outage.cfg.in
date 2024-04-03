@@ -8,3 +8,5 @@ server
 
     # maintenance mode time, if not specified otherwise (seconds)
     maintenance_expiration = 3600
+    # populate outage metrics in shared memory? (1 = Yes)
+    populate_outage_metrics = 0

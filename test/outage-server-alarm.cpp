@@ -31,6 +31,7 @@ TEST_CASE("outage server alarm test")
     zstr_sendx(outage_actor, "ASSET_EXPIRY_SEC", "3", NULL); //seconds
     zstr_sendx(outage_actor, "DEFAULT_MAINTENANCE_EXPIRATION_SEC", "30", NULL); //seconds
     zstr_sendx(outage_actor, "STATE_FILE", "./state-file", NULL);
+    zstr_sendx(outage_actor, "POPULATE_OUTAGE_METRICS", "0", NULL);
     zstr_sendx(outage_actor, "VERBOSE", NULL);
 
     mlm_client_t* outage_client = mlm_client_new();

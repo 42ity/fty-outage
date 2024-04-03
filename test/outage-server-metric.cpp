@@ -69,6 +69,7 @@ TEST_CASE("outage server metric test")
     zstr_sendx(outage_actor, "CONNECT", endpoint, outage_server_address, NULL);
     zstr_sendx(outage_actor, "PRODUCER", "_ALERTS_SYS", NULL);
     zstr_sendx(outage_actor, "CONSUMER", "ASSETS", ".*", NULL);
+    zstr_sendx(outage_actor, "POPULATE_OUTAGE_METRICS", "1", NULL);
     zstr_sendx(outage_actor, "VERBOSE", NULL);
 
     mlm_client_t* asset_producer = mlm_client_new();

@@ -40,6 +40,9 @@ data_t* data_new();
 ///  Destroy the data
 void data_destroy(data_t** self_p);
 
+/// Populate outage metrics in shared memory
+void data_populate_outage_metrics(data_t* self, bool value);
+
 /// Accessor on asset_expir internal hash list
 zhashx_t* data_asset_expir(data_t* self);
 
