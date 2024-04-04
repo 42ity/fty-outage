@@ -26,6 +26,10 @@
 #include <fty_log.h>
 #include <fty_proto.h>
 
+// defaults
+#define DEFAULT_MAINTENANCE_EXPIRATION "3600" //  maintenance mode time in seconds
+#define DEFAULT_POPULATE_OUTAGE_METRICS "0" // populate outage metrics in shared memory?
+
 static void usage()
 {
     printf("%s [options] ...\n", AGENT_FTY_OUTAGE);
@@ -39,22 +43,24 @@ int main(int argc, char* argv[])
     const char* config_file = "/etc/fty-outage/fty-outage.cfg";
     const char* state_file = "/var/lib/fty/fty-outage/state.zpl";
     const char* maintenance_expiration = DEFAULT_MAINTENANCE_EXPIRATION;
+    const char* populate_outage_metrics = DEFAULT_POPULATE_OUTAGE_METRICS;
     bool verbose = false;
 
     // Parse command line
     for (int argn = 1; argn < argc; argn++) {
-        char* param = (argn < argc - 1) ? argv[argn + 1] : NULL;
+        char* arg = argv[argn];
+        char* param = (argn < (argc - 1)) ? argv[argn + 1] : NULL;
 
-        if (streq(argv[argn], "--help") || streq(argv[argn], "-h")) {
+        if (streq(arg, "--help") || streq(arg, "-h")) {
             usage();
             return EXIT_SUCCESS;
         }
-        else if (streq(argv[argn], "--verbose") || streq(argv[argn], "-v")) {
+        else if (streq(arg, "--verbose") || streq(arg, "-v")) {
             verbose = true;
         }
-        else if (streq(argv[argn], "--config") || streq(argv[argn], "-c")) {
+        else if (streq(arg, "--config") || streq(arg, "-c")) {
             if (!param) {
-                fprintf(stderr, "%s: Missing argument\n", argv[argn]);
+                fprintf(stderr, "%s: Missing argument\n", arg);
                 usage();
                 return EXIT_FAILURE;
             }
@@ -62,7 +68,7 @@ int main(int argc, char* argv[])
             ++argn;
         }
         else {
-            fprintf(stderr, "Unknown option: %s\n", argv[argn]);
+            fprintf(stderr, "Unknown option: %s\n", arg);
         }
     }
 
@@ -74,8 +80,10 @@ int main(int argc, char* argv[])
 
     zconfig_t* cfg = zconfig_load(config_file);
     if (cfg) {
-        // Get maintenance mode expiry (default)
+        // Get maintenance mode expiry
         maintenance_expiration = zconfig_get(cfg, "server/maintenance_expiration", DEFAULT_MAINTENANCE_EXPIRATION);
+        // Get populate outage metrics
+        populate_outage_metrics = zconfig_get(cfg, "server/populate_outage_metrics", DEFAULT_POPULATE_OUTAGE_METRICS);
     }
 
     zactor_t* server = zactor_new(fty_outage_server, const_cast<char*>(AGENT_FTY_OUTAGE));
@@ -90,7 +98,9 @@ int main(int argc, char* argv[])
     zstr_sendx(server, "PRODUCER", FTY_PROTO_STREAM_ALERTS_SYS, NULL);
     zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_METRICS_UNAVAILABLE, ".*", NULL);
     zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_ASSETS, ".*", NULL);
+    zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_METRICS_SENSOR, ".*", NULL);
     zstr_sendx(server, "DEFAULT_MAINTENANCE_EXPIRATION_SEC", maintenance_expiration, NULL);
+    zstr_sendx(server, "POPULATE_OUTAGE_METRICS", populate_outage_metrics, NULL);
     if (verbose) {
         zstr_send(server, "VERBOSE");
     }

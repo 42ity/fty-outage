@@ -1,7 +1,5 @@
 /*  =========================================================================
-    fty_outage_server - 42ity outage server
-
-    Copyright (C) 2014 - 2021 Eaton
+    Copyright (C) 2014 - 2020 Eaton
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,7 +19,20 @@
 
 #pragma once
 
-#include <czmq.h>
+#include <cstdint>
 
-//  fty_outage_server actor
-void fty_outage_server(zsock_t* pipe, void* args);
+namespace fty::shm::outage
+{
+
+enum Status {
+    UNKNOWN = 0,
+    INACTIVE,
+    ACTIVE
+};
+
+// write outage metric for ASSET in shared memory, with STATUS value and TTL_SEC/NOW_SEC (seconds)
+// Note: NOW_SEC == 0 means built from zclock_time()
+// returns 0 if ok, else <0
+int write(const char* asset, Status status, unsigned ttl_sec, uint64_t now_sec);
+
+} // namespace

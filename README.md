@@ -1,6 +1,8 @@
 # fty-outage
 
-Agent fty-outage produces pure alerts on \_ALERTS\_SYS when no data are coming from the device.
+Agent fty-outage produces, when no data are coming from a device:
+* `outage` alert on \_ALERTS\_SYS .
+* `outage` metric on shared memory
 
 ## How to build
 
@@ -39,9 +41,7 @@ systemctl start fty-outage
 
 ### Configuration file
 
-Configuration file - fty-outage.cfg - is currently ignored.
-
-Agent reads environment variable BIOS\_LOG\_LEVEL which controls verbosity level.
+Agent reads configuration file given as `-c` argument.
 
 State file for fty-outage is stored in /var/lib/fty/fty-outage.zpl.
 
@@ -61,11 +61,28 @@ Second timer is implemented via zpoller timeout and publishes outage alerts for 
 
 ### Published metrics
 
-Agent doesn't publish any metrics.
+Agent manages `outage` metrics in shared memory for `ups`, `sts`, `epdu`, `sensor`, `sensorgpio` active assets.
+
+This feature is optional (see configuration file, `server/populate_outage_metrics`)
+
+Outage metric can have three values (string tokens):
+* `UNKNOWN` : the asset is in an intermediate state; outage detection is not effective.
+* `INACTIVE` : no outage detected; the asset is responsive as expected (monitoring is available).
+* `ACTIVE` : outage is detected; the asset is not responsive (monitoring is unavailable).
+
+Example:
+
+```bash
+$> fty-shm-cli ups-47637239
+Device: ups-47637239
+	2024-03-26T08:08:54Z(ttl=59s)  outage@ups-47637239 = INACTIVE
+```
 
 ### Published alerts
 
-Agent publishes alerts on \_ALERTS\_SYS stream.
+Agent publishes alerts on `_ALERTS_SYS` stream.
+
+It manages alerts for `ups`, `sts`, `epdu`, `sensor`, `sensorgpio` active assets.
 
 ### Mailbox requests
 
@@ -109,13 +126,10 @@ where
   * Missing maintenance mode,
   * Unsupported maintenance mode.
 
-
 ### Stream subscriptions
 
-Agent is subscribed to streams METRICS, METRICS\_UNAVAILABLE, METRICS\_SENSOR and ASSETS.
+Agent is subscribed to `METRICS_UNAVAILABLE` and `ASSETS` streams.
 
-If it gets METRICS\_UNAVAILABLE message, it resolves all the stored alerts for specified device.
+If it gets `METRICS_UNAVAILABLE` message, it resolves all the stored alerts for specified device. [obsolete]
 
-If it gets METRICS or METRICS\_SENSOR message from a device, it resolves all the stored alerts for specified device and marks the device as active.
-
-If it gets ASSETS message, it updates the asset cache. If the message is for operation DELETE or RETIRE, it resolves all the alerts for specified device.
+If it gets `ASSETS` message, it updates the asset cache. If the message is for operation DELETE or RETIRE, it resolves all the alerts for specified device.

@@ -1,6 +1,4 @@
 /*  =========================================================================
-    data - Data
-
     Copyright (C) 2014 - 2020 Eaton
 
     This program is free software; you can redistribute it and/or modify
@@ -20,116 +18,24 @@
 */
 
 #include "data.h"
+#include "expiration.h"
+#include "outage-metric.h"
 #include <fty_log.h>
+#include <fty_shm.h>
 
 /// it is used as TTL, but in formula we are waiting for ttl*2 ->
 /// see expiration_time()
 /// so to get a 15 minutes outage default TTL -> we choose the half
-#define DEFAULT_ASSET_EXPIRATION_TIME_SEC ((15 * 60) / 2)
+#define DEFAULT_ASSET_EXPIRY_SEC ((15 * 60) / 2)
 
-
-///  Structure of our class
-struct _expiration_t
+///  Structure of data
+struct _data_t
 {
-    uint64_t last_time_seen_sec;  //!< time when some metrics were seen for that asset
-    uint64_t ttl_sec;             //!< minimal ttl seen for the asset
-    uint64_t maintenance_sec;     //!< maintenance timeout if non nul
+    zhashx_t* asset_expir;        //!< <asset_name, expiration_t*>
+    zhashx_t* asset_enames;       //!< <asset_name => asset_friendlyName> (unicode name)
+    uint64_t  default_expiry_sec; //!< default time for the asset, in what asset would be considered as not responding
+    bool      populate_outage_metrics; //!< write outage metrics in shared memory?
 };
-
-expiration_t* expiration_new(uint64_t default_expiry_sec)
-{
-    expiration_t* self = reinterpret_cast<expiration_t*>(zmalloc(sizeof(expiration_t)));
-    if (self) {
-        self->last_time_seen_sec = 0;
-        self->ttl_sec            = default_expiry_sec;
-        self->maintenance_sec    = 0;
-    }
-    return self;
-}
-
-void expiration_destroy(expiration_t** self_p)
-{
-    if (self_p && (*self_p)) {
-        expiration_t* self = *self_p;
-        free(self);
-        *self_p = NULL;
-    }
-}
-
-// set up last_seen time
-// can only prolong time
-void expiration_update_last_time_seen(expiration_t* self, uint64_t last_time_seen_sec)
-{
-    if (!self) {
-        return;
-    }
-
-    // *only* prolong last_seen
-    if (last_time_seen_sec > self->last_time_seen_sec) {
-        logTrace("set last_time_seen to {} s", last_time_seen_sec);
-        self->last_time_seen_sec = last_time_seen_sec;
-    }
-}
-
-uint64_t expiration_last_time_seen(expiration_t* self)
-{
-    return self ? self->last_time_seen_sec : 0;
-}
-
-// set up ttl
-// can only reduce ttl
-void expiration_update_ttl(expiration_t* self, uint64_t ttl_sec)
-{
-    if (!self) {
-        return;
-    }
-
-    // *only* reduce ttl
-    if (ttl_sec < self->ttl_sec) {
-        logTrace("set ttl to {} s", ttl_sec);
-        self->ttl_sec = ttl_sec;
-    }
-}
-
-uint64_t expiration_ttl(expiration_t* self)
-{
-    return self ? self->ttl_sec : 0;
-}
-
-uint64_t expiration_time(expiration_t* self)
-{
-    if (!self) {
-        return 0;
-    }
-
-    // time without maintenance
-    uint64_t time_sec = self->last_time_seen_sec + (self->ttl_sec * 2);
-
-    if (self->maintenance_sec != 0) { // maintenance enabled?
-        if (self->maintenance_sec > time_sec) {
-            time_sec = self->maintenance_sec;
-        }
-        else {
-            // outdated, disable maintenance (auto reset)
-            logTrace("maintenance mode auto reset");
-            self->maintenance_sec = 0;
-        }
-    }
-
-    return time_sec;
-}
-
-void expiration_maintenance_set(expiration_t* self, uint64_t time_sec)
-{
-    if (self) {
-        self->maintenance_sec = time_sec;
-    }
-}
-
-uint64_t expiration_maintenance(expiration_t* self)
-{
-    return self ? self->maintenance_sec : 0;
-}
 
 //  --------------------------------------------------------------------------
 //  Destroy the data
@@ -149,28 +55,58 @@ void data_destroy(data_t** self_p)
 //  Create a new data
 data_t* data_new()
 {
-    data_t* self = reinterpret_cast<data_t*>(zmalloc(sizeof(data_t)));
-    if (!self) {
-        return NULL;
-    }
+    data_t* self = reinterpret_cast<data_t*>(malloc(sizeof(data_t)));
+    do {
+        if (!self) {
+            break;
+        }
+        memset(self, 0, sizeof(*self));
 
-    self->asset_expir = zhashx_new();
-    self->asset_enames = zhashx_new();
-    if (!(self->asset_expir && self->asset_enames)) {
-        data_destroy(&self);
-        return NULL;
-    }
+        self->asset_expir = zhashx_new();
+        self->asset_enames = zhashx_new();
+        if (!(self->asset_expir && self->asset_enames)) {
+            break;
+        }
 
-    self->default_expiry_sec = DEFAULT_ASSET_EXPIRATION_TIME_SEC;
+        self->default_expiry_sec = DEFAULT_ASSET_EXPIRY_SEC;
+        self->populate_outage_metrics = false;
 
-    // map ename<->expiration_t*
-    zhashx_set_destructor(self->asset_expir, reinterpret_cast<zhashx_destructor_fn*>(expiration_destroy));
-    // map ename<->friendlyName
-    zhashx_set_destructor(self->asset_enames, reinterpret_cast<zhashx_destructor_fn*>(zstr_free));
+        // map iname<->expiration_t*
+        zhashx_set_destructor(self->asset_expir, reinterpret_cast<zhashx_destructor_fn*>(expiration_destroy));
+        // map iname<->friendlyName
+        zhashx_set_destructor(self->asset_enames, reinterpret_cast<zhashx_destructor_fn*>(zstr_free));
 
-    return self;
+        return self;
+    } while(0);
+
+    data_destroy(&self);
+    return NULL;
 }
 
+//  ------------------------------------------------------------------------
+void data_populate_outage_metrics(data_t* self, bool value)
+{
+    if (self) {
+        self->populate_outage_metrics = value;
+    }
+}
+
+//  ------------------------------------------------------------------------
+zhashx_t* data_asset_expir(data_t* self)
+{
+    return self ? self->asset_expir : NULL;
+}
+
+//  ------------------------------------------------------------------------
+bool data_asset_in_list(data_t* self, const char* asset_name)
+{
+    if (self && self->asset_expir && asset_name) {
+        return (zhashx_lookup(self->asset_expir, asset_name) != NULL);
+    }
+    return false;
+}
+
+//  ------------------------------------------------------------------------
 const char* data_get_asset_ename(data_t* self, const char* asset_name)
 {
     if (self && self->asset_enames && asset_name) {
@@ -179,7 +115,6 @@ const char* data_get_asset_ename(data_t* self, const char* asset_name)
             return reinterpret_cast<const char*>(it);
         }
     }
-
     return "";
 }
 
@@ -225,7 +160,7 @@ int data_touch_asset(data_t* self, const char* asset_name, uint64_t timestamp_se
     expiration_update_last_time_seen(e, timestamp_sec);
 
     logTrace("Touch {}, last_seen={} s, ttl={} s, expires_at={} s",
-        asset_name, e->last_time_seen_sec, e->ttl_sec, expiration_time(e));
+        asset_name, expiration_last_time_seen(e), expiration_ttl(e), expiration_time(e));
 
     return 0;
 }
@@ -248,20 +183,20 @@ int data_maintenance_asset(data_t* self, const char* asset_name, uint64_t time_s
 }
 
 // --------------------------------------------------------------------------
-// delete source from data
+// delete asset_name from data
 
-void data_delete(data_t* self, const char* source)
+void data_delete(data_t* self, const char* asset_name)
 {
-    if (!(self && source)) {
+    if (!(self && asset_name)) {
         return;
     }
 
     if (self->asset_expir) {
-        zhashx_delete(self->asset_expir, source);
+        zhashx_delete(self->asset_expir, asset_name);
     }
 
     if (self->asset_enames) {
-        zhashx_delete(self->asset_enames, source);
+        zhashx_delete(self->asset_enames, asset_name);
     }
 }
 
@@ -271,14 +206,12 @@ void data_delete(data_t* self, const char* source)
 
 void data_put(data_t* self, fty_proto_t** proto_p)
 {
-    if (!(self && proto_p && (*proto_p))) {
-        return;
-    }
+    // take ownership on proto_p
+    fty_proto_t* proto = NULL;
+    if (proto_p) { proto = *proto_p; *proto_p = NULL; }
 
-    fty_proto_t* proto = *proto_p;
-
-    if (fty_proto_id(proto) != FTY_PROTO_ASSET) {
-        fty_proto_destroy(proto_p);
+    if (!(self && proto && (fty_proto_id(proto) == FTY_PROTO_ASSET))) {
+        fty_proto_destroy(&proto);
         return;
     }
 
@@ -296,6 +229,14 @@ void data_put(data_t* self, fty_proto_t** proto_p)
         || streq(status, "retired")
     ) {
         logDebug("Delete {}", asset_name);
+
+        if (self->populate_outage_metrics && zhashx_lookup(self->asset_expir, asset_name)) {
+            // write outage metric as unknown (deletion/deactivation)
+            unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
+            using namespace fty::shm;
+            outage::write(asset_name, outage::Status::UNKNOWN, ttl_sec, 0 /*now_sec*/);
+        }
+
         data_delete(self, asset_name);
     }
     // other asset operations - add ups, epdu, ats or sensors to the cache if not present
@@ -317,52 +258,80 @@ void data_put(data_t* self, fty_proto_t** proto_p)
         }
 
         // if this asset is not known yet -> add it to the cache
-        expiration_t* e = reinterpret_cast<expiration_t*>(zhashx_lookup(self->asset_expir, asset_name));
-        if (!e) {
-            e = expiration_new(self->default_expiry_sec);
+        if (!zhashx_lookup(self->asset_expir, asset_name)) {
+            expiration_t* e = expiration_new(self->default_expiry_sec);
             if (!e) {
                 logError("expiration_new() failed");
+                // cleanup enames cache
+                zhashx_delete(self->asset_enames, asset_name);
             }
             else {
                 uint64_t now_sec = uint64_t(zclock_time() / 1000);
+
                 expiration_update_last_time_seen(e, now_sec);
 
                 zhashx_update(self->asset_expir, asset_name, e);
 
                 logDebug("ADD {}, last_seen: {} s, ttl: {} s, expires_at: {} s",
-                    asset_name, e->last_time_seen_sec, e->ttl_sec, expiration_time(e));
+                    asset_name, expiration_last_time_seen(e), expiration_ttl(e), expiration_time(e));
+
+                if (self->populate_outage_metrics) {
+                    // write outage metric as unknown (wait for metric polling)
+                    unsigned ttl_sec = unsigned(2 * fty_get_polling_interval()) - 1;
+                    using namespace fty::shm;
+                    outage::write(asset_name, outage::Status::UNKNOWN, ttl_sec, now_sec);
+                }
             }
         }
     }
 
-    fty_proto_destroy(proto_p);
+    fty_proto_destroy(&proto);
 }
 
 // --------------------------------------------------------------------------
 // get non-responding devices
 
-std::vector<std::string> data_get_dead_devices(data_t* self)
+std::vector<std::string> data_get_dead_devices(data_t* self, uint64_t now_sec)
 {
-    std::vector<std::string> dead_devices;
+    if (!(self && self->asset_expir)) {
+        return {};
+    }
 
-    if (self && self->asset_expir) {
-        uint64_t now_sec = uint64_t(zclock_time() / 1000);
-        logDebug("dead devices (now: {} s)", now_sec);
+    logDebug("Check dead devices (now: {} s)", now_sec);
 
-        for (void* it = zhashx_first(self->asset_expir); it; it = zhashx_next(self->asset_expir)) {
-            auto e = static_cast<expiration_t*>(it);
-            const char* asset_name = static_cast<const char*>(zhashx_cursor(self->asset_expir));
+    std::vector<std::string> devices;
+    for (void* it = zhashx_first(self->asset_expir); it; it = zhashx_next(self->asset_expir)) {
+        auto e = static_cast<expiration_t*>(it);
+        const char* asset_name = static_cast<const char*>(zhashx_cursor(self->asset_expir));
 
-            bool is_dead = (expiration_time(e) <= now_sec);
-            if (is_dead) {
-                dead_devices.emplace_back(asset_name);
-                logInfo("{} is down (no metric available)", asset_name);
-            }
-            else {
-                logDebug("{} is alive (remaining: {} s)", asset_name, (expiration_time(e) - now_sec));
-            }
+        bool is_dead = (expiration_time(e) <= now_sec);
+        if (is_dead) {
+            devices.emplace_back(asset_name);
+            logInfo("{} is down (no metric available)", asset_name);
+        }
+        else {
+            logDebug("{} is alive (remaining: {} s)", asset_name, (expiration_time(e) - now_sec));
         }
     }
 
-    return dead_devices;
+    return devices;
+}
+
+// --------------------------------------------------------------------------
+// get all handled devices
+
+std::vector<std::string> data_get_all_devices(data_t* self)
+{
+    if (!(self && self->asset_expir)) {
+        return {};
+    }
+
+    std::vector<std::string> devices;
+    devices.reserve(zhashx_size(self->asset_expir));
+    for (void* it = zhashx_first(self->asset_expir); it; it = zhashx_next(self->asset_expir)) {
+        const char* asset_name = static_cast<const char*>(zhashx_cursor(self->asset_expir));
+        devices.push_back(asset_name);
+    }
+
+    return devices;
 }

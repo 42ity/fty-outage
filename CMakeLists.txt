@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-##############################################################################################################
+cmake_policy(VERSION 3.13)
 
 project(fty-outage
   VERSION 1.0.0
@@ -12,8 +12,12 @@ find_package(fty-cmake PATHS ${CMAKE_BINARY_DIR}/fty-cmake)
 
 etn_target(static ${PROJECT_NAME}-lib
     SOURCES
+        expiration.h
+        expiration.cc
         data.h
         data.cc
+        outage-metric.h
+        outage-metric.cc
         fty-outage-server.h
         fty-outage-server.cc
     USES
@@ -64,8 +68,10 @@ etn_configure_file(
 etn_test_target(${PROJECT_NAME}-lib
     SOURCES
         test/main.cpp
+        test/expiration.cpp
         test/data.cpp
-        test/outage.cpp
+        test/outage-server-metric.cpp
+        test/outage-server-alarm.cpp
     PREPROCESSOR
         -DCATCH_CONFIG_FAST_COMPILE
     SUBDIR
