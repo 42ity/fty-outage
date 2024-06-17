@@ -20,6 +20,7 @@
 */
 
 #include "fty-outage-server.h"
+#include "audit_log.h"
 
 #include <fty_common_agents.h>
 #include <fty_common_mlm_utils.h>
@@ -86,6 +87,9 @@ int main(int argc, char* argv[])
         populate_outage_metrics = zconfig_get(cfg, "server/populate_outage_metrics", DEFAULT_POPULATE_OUTAGE_METRICS);
     }
 
+    // initialize log for auditability
+    AuditLog::init(AGENT_FTY_OUTAGE);
+
     zactor_t* server = zactor_new(fty_outage_server, const_cast<char*>(AGENT_FTY_OUTAGE));
     if (!server) {
         logError("{} actor creation failed", AGENT_FTY_OUTAGE);
@@ -117,6 +121,9 @@ int main(int argc, char* argv[])
 
     zactor_destroy(&server);
     zconfig_destroy(&cfg);
+
+    // release audit context
+    AuditLog::deinit();
 
     return EXIT_SUCCESS;
 }

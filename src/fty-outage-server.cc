@@ -23,6 +23,7 @@
 #include "data.h"
 #include "expiration.h"
 #include "outage-metric.h"
+#include "audit_log.h"
 
 #include <fty_common_macros.h>
 #include <fty_common_agents.h>
@@ -197,7 +198,8 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
     zlist_append(actions, const_cast<char*>("EMAIL"));
     zlist_append(actions, const_cast<char*>("SMS"));
 
-    char* rule_name = zsys_sprintf("%s@%s", "outage", source_asset);
+    char* rule_name = NULL;
+    asprintf(&rule_name, "%s@%s", "outage", source_asset);
 
     const char* friendlyName = data_get_asset_ename(self->data, source_asset);
     std::string description =
@@ -215,13 +217,20 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
         description.c_str(),
         actions);
 
-    char* subject = zsys_sprintf("%s/%s@%s", "outage", "CRITICAL", source_asset);
+    char* subject = NULL;
+    asprintf(&subject, "%s/%s@%s", "outage", "CRITICAL", source_asset);
 
     logInfo("Send alert {} {}", subject, alert_state);
+
+    const char* auditDesc = streq(alert_state, "RESOLVED") ? "RESOLVED" : "ACTIVE/C";
 
     int r = mlm_client_send(self->client, subject, &msg);
     if (r != 0) {
         logError("Cannot send outage alert on '{}'", source_asset);
+        audit_log_error("%8s %s", auditDesc, rule_name);
+    }
+    else {
+        audit_log_info("%8s %s", auditDesc, rule_name);
     }
 
     zmsg_destroy(&msg);
@@ -232,8 +241,8 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
 
 //  --------------------------------------------------------------------------
 /// if for asset 'source-asset' the 'outage' alert is tracked
-/// * publish alert in RESOLVE state for asset 'source-asset'
 /// * removes alert from the list of the active alerts
+/// * --ONCE-- publish alert in RESOLVED state for asset 'source-asset'
 static void s_osrv_resolve_alert(osrv_t* self, const char* source_asset)
 {
     if (!(self && source_asset)) {
@@ -245,6 +254,24 @@ static void s_osrv_resolve_alert(osrv_t* self, const char* source_asset)
         s_osrv_send_alert(self, source_asset, "RESOLVED");
         zhash_delete(self->active_alerts, source_asset);
     }
+}
+
+//  --------------------------------------------------------------------------
+/// if for asset 'source-asset' the 'outage' alert is NOT tracked
+/// * adds alert to the list of the active alerts
+/// * --ALWAYS-- publish alert in ACTIVE state for asset 'source-asset'
+static void s_osrv_activate_alert(osrv_t* self, const char* source_asset)
+{
+    if (!(self && source_asset)) {
+        logDebug("bad args");
+        return;
+    }
+
+    if (!zhash_lookup(self->active_alerts, source_asset)) {
+        zhash_insert(self->active_alerts, source_asset, VOID_TRUE);
+    }
+
+    s_osrv_send_alert(self, source_asset, "ACTIVE");
 }
 
 //  --------------------------------------------------------------------------
@@ -293,24 +320,6 @@ static int s_osrv_maintenance_mode(osrv_t* self, const char* source_asset, int m
     }
 
     return 0;
-}
-
-//  --------------------------------------------------------------------------
-/// if for asset 'source-asset' the 'outage' alert is NOT tracked
-/// * publish alert in ACTIVE state for asset 'source-asset'
-/// * adds alert to the list of the active alerts
-static void s_osrv_activate_alert(osrv_t* self, const char* source_asset)
-{
-    if (!(self && source_asset)) {
-        logDebug("bad args");
-        return;
-    }
-
-    if (!zhash_lookup(self->active_alerts, source_asset)) {
-        zhash_insert(self->active_alerts, source_asset, VOID_TRUE);
-    }
-
-    s_osrv_send_alert(self, source_asset, "ACTIVE");
 }
 
 //  --------------------------------------------------------------------------

@@ -18,6 +18,8 @@ etn_target(static ${PROJECT_NAME}-lib
         data.cc
         outage-metric.h
         outage-metric.cc
+        audit_log.h
+        audit_log.cc
         fty-outage-server.h
         fty-outage-server.cc
     USES
@@ -68,6 +70,7 @@ etn_configure_file(
 etn_test_target(${PROJECT_NAME}-lib
     SOURCES
         test/main.cpp
+        test/audit-log.cpp
         test/expiration.cpp
         test/data.cpp
         test/outage-server-metric.cpp
