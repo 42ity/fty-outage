@@ -70,7 +70,6 @@ etn_configure_file(
 etn_test_target(${PROJECT_NAME}-lib
     SOURCES
         test/main.cpp
-        test/audit-log.cpp
         test/expiration.cpp
         test/data.cpp
         test/outage-server-metric.cpp
