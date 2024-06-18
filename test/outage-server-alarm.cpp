@@ -1,5 +1,6 @@
 #include <catch2/catch.hpp>
 #include "src/fty-outage-server.h"
+#include "src/audit_log.h"
 #include <malamute.h>
 #include <fty_log.h>
 #include <fty_shm.h>
@@ -8,6 +9,11 @@ TEST_CASE("outage server alarm test")
 {
     const char* outage_server_address = "fty-outage-test";
     const char* endpoint = "inproc://malamute-fty-outage-test";
+
+    AuditLog::init("outage-server-alarm-test");
+    REQUIRE(AuditLog::getInstance() != nullptr);
+    audit_log_info("outage-server-alarm-test audit test %s", "INFO");
+    audit_log_error("outage-server-alarm-test audit test %s", "ERROR");
 
     zactor_t* server = zactor_new(mlm_server, const_cast<char*>("Malamute"));
     REQUIRE(server);
@@ -209,4 +215,7 @@ TEST_CASE("outage server alarm test")
     zactor_destroy(&outage_actor);
     zactor_destroy(&server);
     fty_shm_delete_test_dir();
+
+    AuditLog::deinit();
+    REQUIRE(AuditLog::getInstance() == nullptr);
 }

@@ -18,6 +18,8 @@ etn_target(static ${PROJECT_NAME}-lib
         data.cc
         outage-metric.h
         outage-metric.cc
+        audit_log.h
+        audit_log.cc
         fty-outage-server.h
         fty-outage-server.cc
     USES

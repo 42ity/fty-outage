@@ -13,5 +13,12 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
     ========================================================================
 */
-#define CATCH_CONFIG_MAIN // This tells Catch to provide a main() - only do this in one cpp file
+
+#define CATCH_CONFIG_RUNNER
 #include <catch2/catch.hpp>
+
+int main(int argc, char* argv[])
+{
+    int result = Catch::Session().run(argc, argv);
+    return result;
+}
