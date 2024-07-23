@@ -33,7 +33,6 @@ TEST_CASE("outage server alarm test")
     zstr_sendx(outage_actor, "CONNECT", endpoint, outage_server_address, NULL);
     zstr_sendx(outage_actor, "PRODUCER", "_ALERTS_SYS", NULL);
     zstr_sendx(outage_actor, "CONSUMER", "ASSETS", ".*", NULL);
-    zstr_sendx(outage_actor, "CONSUMER", "_METRICS_UNAVAILABLE", ".*", NULL);
     zstr_sendx(outage_actor, "ASSET_EXPIRY_SEC", "3", NULL); //seconds
     zstr_sendx(outage_actor, "DEFAULT_MAINTENANCE_EXPIRATION_SEC", "30", NULL); //seconds
     zstr_sendx(outage_actor, "STATE_FILE", "./state-file", NULL);
