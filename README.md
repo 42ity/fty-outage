@@ -128,8 +128,6 @@ where
 
 ### Stream subscriptions
 
-Agent is subscribed to `METRICS_UNAVAILABLE` and `ASSETS` streams.
-
-If it gets `METRICS_UNAVAILABLE` message, it resolves all the stored alerts for specified device. [obsolete]
+Agent is subscribed to the `ASSETS` stream.
 
 If it gets `ASSETS` message, it updates the asset cache. If the message is for operation DELETE or RETIRE, it resolves all the alerts for specified device.
