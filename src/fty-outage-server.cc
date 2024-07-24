@@ -849,49 +849,33 @@ void fty_outage_server(zsock_t* pipe, void* args)
             //logDebug("{}: recv {} from {}", actor_name, cmd, address);
 
             if (streq(cmd, "STREAM DELIVER")) {
-                if (streq(address, FTY_PROTO_STREAM_METRICS_UNAVAILABLE)) {
-                    char* aux = zmsg_popstr(message);
-                    if (aux && streq(aux, "METRICUNAVAILABLE")) {
-                        zstr_free(&aux);
-                        aux = zmsg_popstr(message); // topic in form aaaa@bbb
-                        if (aux && strstr(aux, "@")) {
-                            logDebug("{}/METRICUNAVAILABLE {}", address, aux);
-                            const char* asset_name = strstr(aux, "@") + 1;
-                            s_osrv_resolve_alert(self, asset_name);
-                            data_delete(self->data, asset_name);
-                        }
+                fty_proto_t* proto = fty_proto_decode(&message);
+                if (proto && (fty_proto_id(proto) == FTY_PROTO_ASSET))
+                {
+                    // notification from stream ASSETS
+                    const char* operation = fty_proto_operation(proto);
+                    const char* status = fty_proto_aux_string(proto, FTY_PROTO_ASSET_STATUS, "active");
+
+                    logDebug("{}/{}/{}", address, operation, fty_proto_name(proto));
+
+                    // resolve pending alert on asset deletion/deactivation
+                    if (streq(operation, FTY_PROTO_ASSET_OP_DELETE) || !streq(status, "active")) {
+                        s_osrv_resolve_alert(self, fty_proto_name(proto));
                     }
-                    zstr_free(&aux);
+
+                    data_put(self->data, &proto);
                 }
-                else { // from FTY_PROTO streams
-                    fty_proto_t* proto = fty_proto_decode(&message);
-                    if (proto && (fty_proto_id(proto) == FTY_PROTO_ASSET))
-                    {
-                        // notification from stream ASSETS
-                        const char* operation = fty_proto_operation(proto);
-                        const char* status = fty_proto_aux_string(proto, FTY_PROTO_ASSET_STATUS, "active");
+                else if (proto && (fty_proto_id(proto) == FTY_PROTO_METRIC)) {
+                    // coming from stream METRICS_SENSOR
+                    char* metricName = NULL;
+                    asprintf(&metricName, "%s@%s", fty_proto_type(proto), fty_proto_name(proto));
 
-                        logDebug("{}/{}/{}", address, operation, fty_proto_name(proto));
+                    logDebug("{}/{}", address, metricName);
 
-                        // resolve pending alert on asset deletion/deactivation
-                        if (streq(operation, FTY_PROTO_ASSET_OP_DELETE) || !streq(status, "active")) {
-                            s_osrv_resolve_alert(self, fty_proto_name(proto));
-                        }
-
-                        data_put(self->data, &proto);
-                    }
-                    else if (proto && (fty_proto_id(proto) == FTY_PROTO_METRIC)) {
-                        // coming from stream METRICS_SENSOR
-                        char* metricName = NULL;
-                        asprintf(&metricName, "%s@%s", fty_proto_type(proto), fty_proto_name(proto));
-
-                        logDebug("{}/{}", address, metricName);
-
-                        zhashx_update(self->incoming_metrics, metricName, proto);
-                        zstr_free(&metricName);
-                    }
-                    fty_proto_destroy(&proto);
+                    zhashx_update(self->incoming_metrics, metricName, proto);
+                    zstr_free(&metricName);
                 }
+                fty_proto_destroy(&proto);
             }
             else if (streq(cmd, "MAILBOX DELIVER")) {
                 // someone is addressing us directly
