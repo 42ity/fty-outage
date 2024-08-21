@@ -52,7 +52,6 @@ struct osrv_t
     uint64_t      default_maintenance_expiration; // sec
     uint64_t      timeout_ms;
     bool          verbose;
-    zhashx_t*     incoming_metrics; // incoming from METRICS stream
     bool          populate_outage_metrics; // write outage metrics in shared memory?
 };
 
@@ -66,7 +65,6 @@ static void s_osrv_destroy(osrv_t** self_p)
         data_destroy(&self->data);
         mlm_client_destroy(&self->client);
         zstr_free(&self->state_file);
-        zhashx_destroy(&self->incoming_metrics);
         free(self);
         *self_p = NULL;
     }
@@ -86,15 +84,10 @@ static osrv_t* s_osrv_new()
         self->client = mlm_client_new();
         self->data = data_new();
         self->active_alerts = zhash_new();
-        self->incoming_metrics = zhashx_new();
 
-        if (!(self->client && self->data && self->active_alerts && self->incoming_metrics)) {
+        if (!(self->client && self->data && self->active_alerts)) {
             break;
         }
-
-        // map metric@name<->fty_proto_t*
-        zhashx_set_destructor(self->incoming_metrics, reinterpret_cast<zhashx_destructor_fn*>(fty_proto_destroy));
-        zhashx_set_duplicator(self->incoming_metrics, reinterpret_cast<zhashx_duplicator_fn*>(fty_proto_dup));
 
         // defaults
         self->state_file = NULL;
@@ -378,28 +371,6 @@ static void s_outage_metric_poller_process(osrv_t* self)
 
     uint64_t now_sec = uint64_t(zclock_time() / 1000);
 
-    if (self->incoming_metrics) {
-        // complete metrics with incomings
-        std::vector<std::string> outdated;
-        for (void* it = zhashx_first(self->incoming_metrics); it; it = zhashx_next(self->incoming_metrics)) {
-            fty_proto_t* metric = static_cast<fty_proto_t*>(it);
-            if ((fty_proto_time(metric) + fty_proto_ttl(metric)) <= now_sec) {
-                // metric is outdated
-                const char* key = static_cast<const char*>(zhashx_cursor(self->incoming_metrics));
-                outdated.push_back(key);
-            }
-            else {
-                metrics.add(fty_proto_dup(metric));
-            }
-        }
-
-        // update incoming_metrics (rm outdated)
-        for (const auto& key : outdated) {
-            logDebug("remove outdated metric {}", key);
-            zhashx_delete(self->incoming_metrics, key.c_str());
-        }
-    }
-
     std::vector<std::string> aliveAssets;
     aliveAssets.reserve(zhashx_size(data_asset_expir(self->data)));
 
@@ -410,17 +381,6 @@ static void s_outage_metric_poller_process(osrv_t* self)
         }
 
         const char* asset_name = fty_proto_name(metric);
-
-        // sensor exception
-        const char* port = fty_proto_aux_string(metric, FTY_PROTO_METRICS_SENSOR_AUX_PORT, NULL);
-        if (port) {
-            // get sensors attached to the 'asset' on the 'port'! we can have more than 1!
-            asset_name = fty_proto_aux_string(metric, FTY_PROTO_METRICS_SENSOR_AUX_SNAME, NULL);
-            if (!asset_name) {
-                logWarn("Sensor malformed: found {}='{}' but {} is missing",
-                    FTY_PROTO_METRICS_SENSOR_AUX_PORT, port, FTY_PROTO_METRICS_SENSOR_AUX_SNAME);
-            }
-        }
 
         if (asset_name && data_asset_in_list(self->data, asset_name)) {
             logTrace("{} is alive (type: {}, time: {}, ttl: {})",
@@ -864,16 +824,6 @@ void fty_outage_server(zsock_t* pipe, void* args)
                     }
 
                     data_put(self->data, &proto);
-                }
-                else if (proto && (fty_proto_id(proto) == FTY_PROTO_METRIC)) {
-                    // coming from stream METRICS_SENSOR
-                    char* metricName = NULL;
-                    asprintf(&metricName, "%s@%s", fty_proto_type(proto), fty_proto_name(proto));
-
-                    logDebug("{}/{}", address, metricName);
-
-                    zhashx_update(self->incoming_metrics, metricName, proto);
-                    zstr_free(&metricName);
                 }
                 fty_proto_destroy(&proto);
             }
