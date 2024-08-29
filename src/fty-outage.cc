@@ -101,7 +101,6 @@ int main(int argc, char* argv[])
     zstr_sendx(server, "CONNECT", MLM_ENDPOINT, AGENT_FTY_OUTAGE, NULL);
     zstr_sendx(server, "PRODUCER", FTY_PROTO_STREAM_ALERTS_SYS, NULL);
     zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_ASSETS, ".*", NULL);
-    zstr_sendx(server, "CONSUMER", FTY_PROTO_STREAM_METRICS_SENSOR, ".*", NULL);
     zstr_sendx(server, "DEFAULT_MAINTENANCE_EXPIRATION_SEC", maintenance_expiration, NULL);
     zstr_sendx(server, "POPULATE_OUTAGE_METRICS", populate_outage_metrics, NULL);
     if (verbose) {

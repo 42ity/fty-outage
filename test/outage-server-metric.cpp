@@ -111,19 +111,38 @@ TEST_CASE("outage server metric test")
     rv = mlm_client_send(asset_producer, "EPDU44", &sendmsg);
     REQUIRE(rv >= 0);
 
+     // create asset SENSOR11
+    sendmsg = NULL;
+    {
+        zhash_t* asset_aux = zhash_new();
+        zhash_insert(asset_aux, "status", const_cast<char*>("active"));
+        zhash_insert(asset_aux, "type", const_cast<char*>("device"));
+        zhash_insert(asset_aux, "subtype", const_cast<char*>("sensor"));
+        zhash_t* asset_ext = zhash_new();
+        zhash_insert(asset_ext, "logical_asset", const_cast<char*>("DATACENTER1"));
+        zhash_insert(asset_ext, "sensor_function", const_cast<char*>("input"));
+        sendmsg = fty_proto_encode_asset(asset_aux, "SENSOR11", FTY_PROTO_ASSET_OP_CREATE, asset_ext);
+        zhash_destroy(&asset_aux);
+        zhash_destroy(&asset_ext);
+    }
+    rv = mlm_client_send(asset_producer, "SENSOR11", &sendmsg);
+    REQUIRE(rv >= 0);
+
     zclock_sleep(1000); // sync
 
     // outage metrics are in unknown state (not polled yet)
     CHECK(outage_metric_value("UPS33") == "UNKNOWN");
     CHECK(outage_metric_value("EPDU44") == "UNKNOWN");
+    CHECK(outage_metric_value("SENSOR11") == "UNKNOWN");
 
     // wait poll sync
     zclock_sleep((polling_value + 1) * 1000);
 
-    // outage metrics are in active state (UPS/EPDU are down)
+    // outage metrics are in active state (UPS/EPDU/SENSOR are down)
     print_metrics();
     CHECK(outage_metric_value("UPS33") == "ACTIVE");
     CHECK(outage_metric_value("EPDU44") == "ACTIVE");
+    CHECK(outage_metric_value("SENSOR11") == "ACTIVE");
 
     // populate UPS metric
     rv = fty::shm::write_metric("UPS33", "dev", "1", "c", ttl_2);
@@ -132,24 +151,28 @@ TEST_CASE("outage server metric test")
     // wait poll sync
     zclock_sleep((polling_value + 1) * 1000);
 
-    // UPS is up, EPDU is down
+    // UPS is up, EPDU and SENSOR are down
     print_metrics();
     CHECK(outage_metric_value("UPS33") == "INACTIVE");
     CHECK(outage_metric_value("EPDU44") == "ACTIVE");
+    CHECK(outage_metric_value("SENSOR11") == "ACTIVE");
 
-    // populate UPS/EPDU metrics
+    // populate UPS/EPDU/SENSOR metrics
     rv = fty::shm::write_metric("UPS33", "dev", "1", "c", ttl_2);
     REQUIRE(rv >= 0);
     rv = fty::shm::write_metric("EPDU44", "dev", "1", "c", ttl_2);
+    REQUIRE(rv >= 0);
+    rv = fty::shm::write_metric("SENSOR11", "dev", "1", "c", ttl_2);
     REQUIRE(rv >= 0);
 
     // wait poll sync
     zclock_sleep((polling_value + 1) * 1000);
 
-    // UPS/EPDU are up
+    // UPS/EPDU/SENSOR are up
     print_metrics();
     CHECK(outage_metric_value("UPS33") == "INACTIVE");
     CHECK(outage_metric_value("EPDU44") == "INACTIVE");
+    CHECK(outage_metric_value("SENSOR11") == "INACTIVE");
 
     // delete asset UPS33
     sendmsg = NULL;
@@ -163,17 +186,20 @@ TEST_CASE("outage server metric test")
     rv = mlm_client_send(asset_producer, "UPS33", &sendmsg);
     REQUIRE(rv >= 0);
 
-    // unpopulate EPDU44 (ttl = 1 sec.)
+    // unpopulate EPDU44/SENSOR11 (ttl = 1 sec.)
     rv = fty::shm::write_metric("EPDU44", "dev", "1", "c", 1);
+    REQUIRE(rv >= 0);
+    rv = fty::shm::write_metric("SENSOR11", "dev", "1", "c", 1);
     REQUIRE(rv >= 0);
 
     // wait poll sync
     zclock_sleep((polling_value + 1) * 1000);
 
-    // UPS is deleted / EPDU is down
+    // UPS is deleted / EPDU and SENSOR are down
     print_metrics();
     CHECK(outage_metric_value("UPS33") == "UNKNOWN");
     CHECK(outage_metric_value("EPDU44") == "ACTIVE");
+    CHECK(outage_metric_value("SENSOR11") == "ACTIVE");
 
     // wait poll sync
     zclock_sleep((polling_value + 1) * 1000);
@@ -181,6 +207,7 @@ TEST_CASE("outage server metric test")
     print_metrics();
     CHECK(outage_metric_value("UPS33") == "failed"); // no outage metric available
     CHECK(outage_metric_value("EPDU44") == "ACTIVE");
+    CHECK(outage_metric_value("SENSOR11") == "ACTIVE");
 
     // done, cleanup
     mlm_client_destroy(&asset_producer);
