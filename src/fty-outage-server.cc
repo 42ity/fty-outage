@@ -195,7 +195,9 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
     asprintf(&rule_name, "%s@%s", "outage", source_asset);
 
     const char* friendlyName = data_get_asset_ename(self->data, source_asset);
-    std::string description =
+    const char* severity = streq(alert_state, "RESOLVED") ? "OK" : "CRITICAL";
+
+    const std::string description =
         TRANSLATE_ME("Device %s does not provide expected data. It may be offline or not correctly configured.",
             friendlyName);
 
@@ -206,12 +208,12 @@ static void s_osrv_send_alert(osrv_t* self, const char* source_asset, const char
         rule_name,                             // rule_name
         source_asset,
         alert_state, //ACTIVE, RESOLVED
-        "CRITICAL",
+        severity, //OK, CRITICAL
         description.c_str(),
         actions);
 
     char* subject = NULL;
-    asprintf(&subject, "%s/%s@%s", "outage", "CRITICAL", source_asset);
+    asprintf(&subject, "%s/%s@%s", "outage", severity, source_asset);
 
     logInfo("Send alert {} {}", subject, alert_state);
 
